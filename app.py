@@ -55,12 +55,27 @@ def main() -> None:
     )
     triangles = utils.extract_triangle_dfs()
 
+    # Restructure triangles so that each grouping combination renders its
+    # associated value column triangles together rather than as individual
+    # entries.  ``triangles`` is keyed by ``(group_title, value_col)``; group
+    # them by ``group_title`` first, then iterate the value columns within
+    # each group.
+    grouped: dict[str | None, dict[str, pd.DataFrame]] = {}
     for (group_title, val_col), tri_df in triangles.items():
-        title_parts = [val_col]
-        if group_title:
-            title_parts.insert(0, group_title)
-        st.subheader(" - ".join(title_parts))
-        st.dataframe(tri_df)
+        grouped.setdefault(group_title, {})[val_col] = tri_df
+
+    for group_title, val_map in grouped.items():
+        if group_title is not None:
+            st.subheader(group_title)
+        for val_col, tri_df in val_map.items():
+            # When no grouping columns are supplied, the value column itself
+            # should serve as the subheader.  Otherwise, display the value
+            # column as a caption within the group section.
+            if group_title is None:
+                st.subheader(val_col)
+            else:
+                st.markdown(f"**{val_col}**")
+            st.dataframe(tri_df)
 
 
 if __name__ == "__main__":
