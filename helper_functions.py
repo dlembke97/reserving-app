@@ -68,13 +68,12 @@ class ActuarialUtils:
         if group_cols:
             unique_groups = index_df[group_cols].drop_duplicates()
             for row in unique_groups.itertuples(index=False, name=None):
-                mask = pd.Series(True, index=self.triangle.index)
+                sub_tri = self.triangle
                 for col, val in zip(group_cols, row):
-                    mask &= self.triangle[col] == val
+                    sub_tri = sub_tri[sub_tri[col] == val]
                 group_title = ", ".join(
                     f"{col}={val}" for col, val in zip(group_cols, row)
                 )
-                sub_tri = self.triangle[mask]
                 for val_col in value_cols:
                     triangles[(group_title, val_col)] = sub_tri[val_col].to_frame()
         else:
