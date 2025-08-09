@@ -2,6 +2,8 @@ import streamlit as st
 import chainladder as cl
 import pandas as pd
 
+from helper_functions import ActuarialUtils
+
 
 def main():
     st.title("Claims Triangle")
@@ -23,29 +25,30 @@ def main():
         if dtype == "object" and col not in ["origin", "development"]
     ]
 
-    # Determine numeric value columns
-    value_cols = [
-        col for col in df.columns if col not in ["origin", "development"] + cat_cols
-    ]
-
-    # Sidebar allowing user to select grouping columns
+    # Sidebar allowing user to select value and grouping columns
+    value_options = ["IncurLoss", "CumPaidLoss"]
+    selected_values = st.sidebar.multiselect(
+        "Value columns", value_options, default=value_options
+    )
     group_cols = st.sidebar.multiselect("Group triangles by", cat_cols)
 
-    # Display triangles for each unique combination of selected categories
-    if group_cols:
-        for key, group in df.groupby(group_cols):
-            key_vals = key if isinstance(key, tuple) else (key,)
-            title = ", ".join(f"{col}={val}" for col, val in zip(group_cols, key_vals))
-            st.subheader(title)
-            sub_triangle = cl.Triangle(
-                data=group,
-                origin="origin",
-                development="development",
-                columns=value_cols,
-                index=group_cols,
-                cumulative=True,
-            )
-            st.dataframe(sub_triangle.to_frame())
+    utils = ActuarialUtils()
+    utils.create_triangle(
+        df,
+        origin="origin",
+        development="development",
+        value_cols=selected_values,
+        group_cols=group_cols,
+        cumulative=True,
+    )
+    triangles = utils.extract_triangle_dfs()
+
+    for (group_title, val_col), tri_df in triangles.items():
+        title_parts = [val_col]
+        if group_title:
+            title_parts.insert(0, group_title)
+        st.subheader(" - ".join(title_parts))
+        st.dataframe(tri_df)
 
 
 if __name__ == "__main__":
