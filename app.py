@@ -1,36 +1,48 @@
-import streamlit as st
 import chainladder as cl
 import pandas as pd
+import streamlit as st
 
 from helper_functions import ActuarialUtils
 
 
-def main():
-    st.title("Claims Triangle")
+def process_data() -> tuple[pd.DataFrame, list[str]]:
+    """Load sample data and derive categorical columns for grouping.
 
-    # Load sample data with multiple value columns and index categories
+    Returns a tuple of the processed DataFrame and a list of categorical
+    column names that can be used for grouping in the sidebar.
+    """
+
     triangle = cl.load_sample("clrd")
     df = triangle.to_frame().reset_index()
-
-    # Convert numeric development lags to actual evaluation dates
     df["development"] = df.apply(
         lambda row: row["origin"] + pd.DateOffset(months=int(row["development"])),
         axis=1,
     )
-
-    # Identify categorical columns that can be used for grouping
     cat_cols = [
         col
         for col, dtype in df.dtypes.items()
         if dtype == "object" and col not in ["origin", "development"]
     ]
+    return df, cat_cols
 
-    # Sidebar allowing user to select value and grouping columns
+
+def render_sidebar(cat_cols: list[str]) -> tuple[list[str], list[str]]:
+    """Render sidebar controls and return user selections."""
+
     value_options = ["IncurLoss", "CumPaidLoss"]
     selected_values = st.sidebar.multiselect(
         "Value columns", value_options, default=value_options
     )
     group_cols = st.sidebar.multiselect("Group triangles by", cat_cols)
+    return selected_values, group_cols
+
+
+def main() -> None:
+    """Streamlit application entry point."""
+
+    st.title("Claims Triangle")
+    df, cat_cols = process_data()
+    selected_values, group_cols = render_sidebar(cat_cols)
 
     utils = ActuarialUtils()
     utils.create_triangle(
