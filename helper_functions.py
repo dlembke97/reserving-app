@@ -3,11 +3,40 @@ import pandas as pd
 from typing import Dict, List, Optional, Tuple
 
 
-class ActuarialUtils:
-    """Utility helpers for actuarial reserving tasks."""
+class ReservingAppTriangle:
+    """Utility helpers for actuarial reserving tasks.
 
-    def __init__(self) -> None:
-        self.triangle: Optional[cl.Triangle] = None
+    On instantiation this class immediately builds a ``chainladder`` triangle
+    from the provided data, extracts each subgroup as a DataFrame and computes
+    development factor exhibits.  The resulting artifacts are exposed via the
+    ``triangle`` ``triangle_dfs``, ``triangles``, ``ldf_exhibit`` and
+    ``cdf_exhibit`` attributes.
+    """
+
+    def __init__(
+        self,
+        data: pd.DataFrame,
+        origin: str = "origin",
+        development: str = "development",
+        value_cols: Optional[List[str]] = None,
+        group_cols: Optional[List[str]] = None,
+        cumulative: bool = True,
+    ) -> None:
+        # Build and store the master triangle
+        self.triangle: cl.Triangle = self.create_triangle(
+            data,
+            origin=origin,
+            development=development,
+            value_cols=value_cols,
+            group_cols=group_cols,
+            cumulative=cumulative,
+        )
+
+        # Split into DataFrame and Triangle representations for each subgroup
+        self.triangle_dfs = self.extract_triangle_dfs()
+
+        # Compute development factor exhibits for each subgroup
+        self.get_dev_factor_exhibit()
 
     def create_triangle(
         self,
@@ -123,28 +152,36 @@ class ActuarialUtils:
                 triangles[(None, val_col)] = self.triangle[val_col]
         return triangles
 
-    def fit_development_model(
-        self,
-        triangle: cl.Triangle,
-        **kwargs,
-    ) -> cl.Development:
-        """Fit a development model to ``triangle``.
+    def get_dev_factor_exhibit(self) -> None:
+        """Generate LDF and CDF exhibits for each subgroup.
 
-        Parameters
-        ----------
-        triangle:
-            The :class:`chainladder.Triangle` to model.
-        development_method:
-            The development technique to apply. Currently only ``"chainladder"``
-            is supported.
-        **kwargs:
-            Additional keyword arguments forwarded to the underlying
-            ``chainladder`` development model.
-
-        Returns
-        -------
-        chainladder.Development
-            The fitted development model instance.
+        This method fits both volume weighted and simple average development
+        models to every triangle produced by :meth:`extract_triangles`.  The
+        resulting LDF and CDF tables are stored on ``ldf_exhibit`` and
+        ``cdf_exhibit`` dictionaries keyed by ``(group_title, value_col)``.
+        The underlying ``chainladder.Triangle`` objects are also stored on the
+        ``triangles`` attribute for easy access when rendering link ratios.
         """
 
-        return cl.Development(**kwargs).fit(triangle)
+        if self.triangle is None:
+            raise ValueError("No triangle available. Call create_triangle first.")
+
+        self.triangles = self.extract_triangles()
+        self.ldf_exhibit: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
+        self.cdf_exhibit: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
+
+        for key, tri in self.triangles.items():
+            dev_vol = cl.Development().fit(tri)
+            dev_simp = cl.Development(average="simple").fit(tri)
+
+            ldf_vol = dev_vol.ldf_.to_frame()
+            ldf_vol.index = ["Volume Weighted"]
+            ldf_simp = dev_simp.ldf_.to_frame()
+            ldf_simp.index = ["Simple Average"]
+            self.ldf_exhibit[key] = pd.concat([ldf_vol, ldf_simp])
+
+            cdf_vol = dev_vol.cdf_.to_frame()
+            cdf_vol.index = ["Volume Weighted"]
+            cdf_simp = dev_simp.cdf_.to_frame()
+            cdf_simp.index = ["Simple Average"]
+            self.cdf_exhibit[key] = pd.concat([cdf_vol, cdf_simp])

@@ -2,7 +2,7 @@ import chainladder as cl
 import pandas as pd
 import streamlit as st
 
-from helper_functions import ActuarialUtils
+from helper_functions import ReservingAppTriangle
 
 
 def process_data() -> tuple[pd.DataFrame, list[str]]:
@@ -44,8 +44,7 @@ def main() -> None:
     df, cat_cols = process_data()
     selected_values, group_cols = render_sidebar(cat_cols)
 
-    utils = ActuarialUtils()
-    utils.create_triangle(
+    utils = ReservingAppTriangle(
         df,
         origin="origin",
         development="development",
@@ -53,7 +52,7 @@ def main() -> None:
         group_cols=group_cols,
         cumulative=True,
     )
-    triangles = utils.extract_triangles()
+    triangles = utils.triangles
 
     # Restructure triangles so that each grouping combination renders its
     # associated value column triangles together rather than as individual
@@ -80,22 +79,10 @@ def main() -> None:
                 st.dataframe(tri.to_frame())
             with ata_tab:
                 st.dataframe(tri.link_ratio.to_frame())
-                dev_vol = utils.fit_development_model(tri)
-                dev_simp = utils.fit_development_model(tri, average="simple")
-                ldf_vol = dev_vol.ldf_.to_frame()
-                ldf_vol.index = ["Volume Weighted"]
-                ldf_simp = dev_simp.ldf_.to_frame()
-                ldf_simp.index = ["Simple Average"]
-                ldf_table = pd.concat([ldf_vol, ldf_simp])
                 st.markdown("**LDFs**")
-                st.dataframe(ldf_table)
-                cdf_vol = dev_vol.cdf_.to_frame()
-                cdf_vol.index = ["Volume Weighted"]
-                cdf_simp = dev_simp.cdf_.to_frame()
-                cdf_simp.index = ["Simple Average"]
-                cdf_table = pd.concat([cdf_vol, cdf_simp])
+                st.dataframe(utils.ldf_exhibit[(group_title, val_col)])
                 st.markdown("**CDFs**")
-                st.dataframe(cdf_table)
+                st.dataframe(utils.cdf_exhibit[(group_title, val_col)])
         st.write("---")
 
 
