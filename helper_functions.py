@@ -53,7 +53,19 @@ class ActuarialUtils:
         df = self.triangle.to_frame().reset_index()
         origin = self.triangle.origin
         development = self.triangle.development
-        group_cols = [name for name in self.triangle.index.names if name is not None]
+
+        # ``chainladder.Triangle`` exposes its grouping keys via a DataFrame on the
+        # ``index`` attribute rather than a ``MultiIndex``.  Attempting to access
+        # ``index.names`` therefore raises ``AttributeError``.  Instead, rely on the
+        # DataFrame column labels and drop the synthetic ``Total`` column that
+        # Chainladder adds when no explicit grouping columns are supplied.
+        index_df = self.triangle.index
+        group_cols = [
+            col
+            for col in index_df.columns
+            if not (col == "Total" and index_df[col].nunique() == 1)
+        ]
+
         value_cols = list(self.triangle.columns)
 
         triangles: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
