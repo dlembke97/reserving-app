@@ -15,7 +15,7 @@ def process_data() -> tuple[pd.DataFrame, list[str]]:
     triangle = cl.load_sample("clrd")
     df = triangle.to_frame().reset_index()
     df["development"] = df.apply(
-        lambda row: row["origin"] + pd.DateOffset(months=int(row["development"])),
+        lambda row: row["origin"] + pd.DateOffset(months=int(row["development"]) - 12),
         axis=1,
     )
     cat_cols = [
