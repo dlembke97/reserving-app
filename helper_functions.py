@@ -126,7 +126,6 @@ class ActuarialUtils:
     def fit_development_model(
         self,
         triangle: cl.Triangle,
-        development_method: str = "chainladder",
         **kwargs,
     ) -> cl.Development:
         """Fit a development model to ``triangle``.
@@ -148,8 +147,4 @@ class ActuarialUtils:
             The fitted development model instance.
         """
 
-        if development_method != "chainladder":
-            raise NotImplementedError(
-                f"Development method '{development_method}' is not implemented."
-            )
         return cl.Development(**kwargs).fit(triangle)
