@@ -50,26 +50,33 @@ class ActuarialUtils:
         if self.triangle is None:
             raise ValueError("No triangle available. Call create_triangle first.")
 
-        df = self.triangle.to_frame().reset_index()
-        origin = self.triangle.origin
-        development = self.triangle.development
-        group_cols = [name for name in self.triangle.index.names if name is not None]
+        # ``chainladder.Triangle`` exposes its grouping keys via a DataFrame on the
+        # ``index`` attribute rather than a ``MultiIndex``.  Attempting to access
+        # ``index.names`` therefore raises ``AttributeError``.  Instead, rely on the
+        # DataFrame column labels and drop the synthetic ``Total`` column that
+        # Chainladder adds when no explicit grouping columns are supplied.
+        index_df = self.triangle.index
+        group_cols = [
+            col
+            for col in index_df.columns
+            if not (col == "Total" and index_df[col].nunique() == 1)
+        ]
+
         value_cols = list(self.triangle.columns)
 
         triangles: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
         if group_cols:
-            for key, grp in df.groupby(group_cols):
-                key_vals = key if isinstance(key, tuple) else (key,)
+            unique_groups = index_df[group_cols].drop_duplicates()
+            for row in unique_groups.itertuples(index=False, name=None):
+                sub_tri = self.triangle
+                for col, val in zip(group_cols, row):
+                    sub_tri = sub_tri[sub_tri[col] == val]
                 group_title = ", ".join(
-                    f"{col}={val}" for col, val in zip(group_cols, key_vals)
+                    f"{col}={val}" for col, val in zip(group_cols, row)
                 )
                 for val_col in value_cols:
-                    pivot = grp.pivot(
-                        index=origin, columns=development, values=val_col
-                    )
-                    triangles[(group_title, val_col)] = pivot
+                    triangles[(group_title, val_col)] = sub_tri[val_col].to_frame()
         else:
             for val_col in value_cols:
-                pivot = df.pivot(index=origin, columns=development, values=val_col)
-                triangles[(None, val_col)] = pivot
+                triangles[(None, val_col)] = self.triangle[val_col].to_frame()
         return triangles
