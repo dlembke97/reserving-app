@@ -53,21 +53,21 @@ def main() -> None:
         group_cols=group_cols,
         cumulative=True,
     )
-    triangles = utils.extract_triangle_dfs()
+    triangles = utils.extract_triangles()
 
     # Restructure triangles so that each grouping combination renders its
     # associated value column triangles together rather than as individual
     # entries.  ``triangles`` is keyed by ``(group_title, value_col)``; group
     # them by ``group_title`` first, then iterate the value columns within
     # each group.
-    grouped: dict[str | None, dict[str, pd.DataFrame]] = {}
-    for (group_title, val_col), tri_df in triangles.items():
-        grouped.setdefault(group_title, {})[val_col] = tri_df
+    grouped: dict[str | None, dict[str, cl.Triangle]] = {}
+    for (group_title, val_col), tri in triangles.items():
+        grouped.setdefault(group_title, {})[val_col] = tri
 
     for group_title, val_map in grouped.items():
         if group_title is not None:
             st.subheader(group_title)
-        for val_col, tri_df in val_map.items():
+        for val_col, tri in val_map.items():
             # When no grouping columns are supplied, the value column itself
             # should serve as the subheader.  Otherwise, display the value
             # column as a caption within the group section.
@@ -75,7 +75,23 @@ def main() -> None:
                 st.subheader(val_col)
             else:
                 st.markdown(f"**{val_col}**")
-            st.dataframe(tri_df)
+            value_tab, ata_tab = st.tabs(["Values", "ATA"])
+            with value_tab:
+                st.dataframe(tri.to_frame())
+            with ata_tab:
+                st.dataframe(tri.link_ratio.to_frame())
+                dev_vol = utils.fit_development_model(tri)
+                dev_simp = utils.fit_development_model(tri, average="simple")
+                ldf_vol = dev_vol.ldf_.to_frame(); ldf_vol.index = ["Volume Weighted"]
+                ldf_simp = dev_simp.ldf_.to_frame(); ldf_simp.index = ["Simple Average"]
+                ldf_table = pd.concat([ldf_vol, ldf_simp])
+                st.markdown("**LDFs**")
+                st.dataframe(ldf_table)
+                cdf_vol = dev_vol.cdf_.to_frame(); cdf_vol.index = ["Volume Weighted"]
+                cdf_simp = dev_simp.cdf_.to_frame(); cdf_simp.index = ["Simple Average"]
+                cdf_table = pd.concat([cdf_vol, cdf_simp])
+                st.markdown("**CDFs**")
+                st.dataframe(cdf_table)
         st.write("---")
 
 
