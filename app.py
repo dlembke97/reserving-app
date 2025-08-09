@@ -2,7 +2,7 @@ import chainladder as cl
 import pandas as pd
 import streamlit as st
 
-from helper_functions import ReservingAppTriangle
+from helper_functions import *
 
 
 def process_data() -> tuple[pd.DataFrame, list[str]]:
