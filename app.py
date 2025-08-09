@@ -82,13 +82,17 @@ def main() -> None:
                 st.dataframe(tri.link_ratio.to_frame())
                 dev_vol = utils.fit_development_model(tri)
                 dev_simp = utils.fit_development_model(tri, average="simple")
-                ldf_vol = dev_vol.ldf_.to_frame(); ldf_vol.index = ["Volume Weighted"]
-                ldf_simp = dev_simp.ldf_.to_frame(); ldf_simp.index = ["Simple Average"]
+                ldf_vol = dev_vol.ldf_.to_frame()
+                ldf_vol.index = ["Volume Weighted"]
+                ldf_simp = dev_simp.ldf_.to_frame()
+                ldf_simp.index = ["Simple Average"]
                 ldf_table = pd.concat([ldf_vol, ldf_simp])
                 st.markdown("**LDFs**")
                 st.dataframe(ldf_table)
-                cdf_vol = dev_vol.cdf_.to_frame(); cdf_vol.index = ["Volume Weighted"]
-                cdf_simp = dev_simp.cdf_.to_frame(); cdf_simp.index = ["Simple Average"]
+                cdf_vol = dev_vol.cdf_.to_frame()
+                cdf_vol.index = ["Volume Weighted"]
+                cdf_simp = dev_simp.cdf_.to_frame()
+                cdf_simp.index = ["Simple Average"]
                 cdf_table = pd.concat([cdf_vol, cdf_simp])
                 st.markdown("**CDFs**")
                 st.dataframe(cdf_table)
