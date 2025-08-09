@@ -76,6 +76,7 @@ def main() -> None:
             else:
                 st.markdown(f"**{val_col}**")
             st.dataframe(tri_df)
+        st.write("---")
 
 
 if __name__ == "__main__":
