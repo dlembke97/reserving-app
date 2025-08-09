@@ -1,0 +1,3 @@
+[submodule "chainladder-python"]
+	path = chainladder-python
+	url = https://github.com/dlembke97/chainladder-python.git
