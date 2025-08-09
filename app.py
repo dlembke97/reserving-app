@@ -24,7 +24,9 @@ def main():
     ]
 
     # Determine numeric value columns
-    value_cols = [col for col in df.columns if col not in ["origin", "development"] + cat_cols]
+    value_cols = [
+        col for col in df.columns if col not in ["origin", "development"] + cat_cols
+    ]
 
     # Sidebar allowing user to select grouping columns
     group_cols = st.sidebar.multiselect("Group triangles by", cat_cols)
@@ -44,8 +46,6 @@ def main():
                 cumulative=True,
             )
             st.dataframe(sub_triangle.to_frame())
-    else:
-        st.dataframe(df)
 
 
 if __name__ == "__main__":
