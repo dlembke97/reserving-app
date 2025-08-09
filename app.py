@@ -75,12 +75,14 @@ def main() -> None:
                 st.subheader(val_col)
             else:
                 st.markdown(f"**{val_col}**")
-            value_tab, ata_tab = st.tabs(["Values", "ATA"])
+            dev_vol = utils.fit_development_model(tri)
+            value_tab, ata_tab, exhibit_tab = st.tabs(
+                ["Values", "ATA", "Reserve Exhibit"]
+            )
             with value_tab:
                 st.dataframe(tri.to_frame())
             with ata_tab:
                 st.dataframe(tri.link_ratio.to_frame())
-                dev_vol = utils.fit_development_model(tri)
                 dev_simp = utils.fit_development_model(tri, average="simple")
                 ldf_vol = dev_vol.ldf_.to_frame()
                 ldf_vol.index = ["Volume Weighted"]
@@ -96,6 +98,11 @@ def main() -> None:
                 cdf_table = pd.concat([cdf_vol, cdf_simp])
                 st.markdown("**CDFs**")
                 st.dataframe(cdf_table)
+            with exhibit_tab:
+                ultimate_df = dev_vol.ultimate_[val_col].to_frame()
+                ultimate_df.columns = ["Ultimate"]
+                ultimate_df.index = ultimate_df.index.year
+                st.dataframe(ultimate_df)
         st.write("---")
 
 

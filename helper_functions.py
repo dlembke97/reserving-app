@@ -128,7 +128,7 @@ class ActuarialUtils:
         triangle: cl.Triangle,
         development_method: str = "chainladder",
         **kwargs,
-    ) -> cl.Development:
+    ) -> cl.Chainladder:
         """Fit a development model to ``triangle``.
 
         Parameters
@@ -144,7 +144,7 @@ class ActuarialUtils:
 
         Returns
         -------
-        chainladder.Development
+        chainladder.Chainladder
             The fitted development model instance.
         """
 
@@ -152,4 +152,4 @@ class ActuarialUtils:
             raise NotImplementedError(
                 f"Development method '{development_method}' is not implemented."
             )
-        return cl.Development(**kwargs).fit(triangle)
+        return cl.Chainladder(**kwargs).fit(triangle)
