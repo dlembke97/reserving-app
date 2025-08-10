@@ -1,8 +1,59 @@
 import chainladder as cl
 import pandas as pd
 from typing import Dict, List, Optional, Tuple
-
+import streamlit as st
+from pandas.api.types import (
+    is_period_dtype,
+    is_datetime64_any_dtype,
+    is_integer_dtype,
+    is_string_dtype,
+)
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+
+
+def _coerce_year_column(df: pd.DataFrame, colname: str = "Year") -> pd.DataFrame:
+    df = df.copy()
+
+    # ensure "Year" exists (might be in the index)
+    if colname not in df.columns:
+        df = df.reset_index().rename(columns={"index": colname})
+
+    col = df[colname]
+
+    if is_period_dtype(col):
+        # Period -> timestamp -> year
+        y = col.dt.to_timestamp().dt.year
+    elif is_datetime64_any_dtype(col):
+        # datetime64[ns] (or tz-aware)
+        y = (
+            col.dt.tz_localize(None) if getattr(col.dt, "tz", None) is not None else col
+        ).dt.year
+    else:
+        # try to parse strings/numbers into datetimes; if that fails, fall back to numeric year
+        parsed = pd.to_datetime(col, errors="coerce")
+        if parsed.notna().any():
+            y = parsed.dt.year
+        else:
+            y = pd.to_numeric(col, errors="coerce")
+
+    # keep nullable ints so missing years don’t crash
+    df[colname] = y.astype("Int64")
+    return df
+
+
+def _json_safe(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    AgGrid sends data as JSON; JSON can't contain NaN/Infinity/<NA>.
+    Convert all missing to None and avoid NumPy scalars that serialize to NaN.
+    """
+    df = df.copy()
+    # Convert pandas NA/NaN to None
+    df = df.where(df.notna(), None)
+    # Make sure nullable integers don’t re-emit NaN; cast each column to Python objects
+    for c in df.columns:
+        if pd.api.types.is_integer_dtype(df[c]) and str(df[c].dtype).startswith("Int"):
+            df[c] = df[c].astype(object)  # keeps None for missing
+    return df
 
 
 def custom_aggrid(df: pd.DataFrame, index_label: Optional[str] = None) -> dict:
@@ -41,6 +92,8 @@ def custom_aggrid(df: pd.DataFrame, index_label: Optional[str] = None) -> dict:
     if index_label is not None and index_levels >= 1:
         df.rename(columns={df.columns[0]: index_label}, inplace=True)
 
+    df = _coerce_year_column(df, index_label)
+    df = _json_safe(df)
     gb = GridOptionsBuilder.from_dataframe(df)
     numeric_cols = df.select_dtypes(include="number").columns
     # Exclude index columns from numeric formatting to preserve values like
@@ -65,8 +118,8 @@ def custom_aggrid(df: pd.DataFrame, index_label: Optional[str] = None) -> dict:
     # ``to_json`` which can hit recursion limits for certain inputs.  Instead,
     # supply the row data directly in the grid options and invoke ``AgGrid``
     # without the ``data`` parameter to bypass that internal conversion.
-    grid_options["rowData"] = df.to_dict("records")
-    return AgGrid(gridOptions=grid_options, allow_unsafe_jscode=True)
+
+    return AgGrid(df, gridOptions=grid_options, allow_unsafe_jscode=True)
 
 
 class ReservingAppTriangle:
