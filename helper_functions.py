@@ -2,6 +2,47 @@ import chainladder as cl
 import pandas as pd
 from typing import Dict, List, Optional, Tuple
 
+from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+
+
+def custom_aggrid(df: pd.DataFrame) -> dict:
+    """Display ``df`` using AG Grid with numeric formatting.
+
+    Numeric columns are formatted depending on whether their absolute maximum
+    value exceeds 999. Values greater than this threshold are shown with a
+    thousands separator and no decimals. Otherwise values are displayed with
+    two decimal places. Sorting remains based on the underlying numeric value
+    via ``valueFormatter`` JavaScript functions.
+
+    Parameters
+    ----------
+    df:
+        DataFrame to render.
+
+    Returns
+    -------
+    dict
+        Response returned by :func:`st_aggrid.AgGrid`.
+    """
+
+    gb = GridOptionsBuilder.from_dataframe(df)
+    numeric_cols = df.select_dtypes(include="number").columns
+    for col in numeric_cols:
+        max_val = df[col].abs().max()
+        if max_val > 999:
+            formatter = JsCode(
+                "function(params) {return Number(params.value).toLocaleString('en-US');}"
+            )
+        else:
+            formatter = JsCode(
+                "function(params) {return Number(params.value).toLocaleString('en-US', "
+                "{minimumFractionDigits:2, maximumFractionDigits:2});}"
+            )
+        gb.configure_column(col, type=["numericColumn"], valueFormatter=formatter)
+
+    grid_options = gb.build()
+    return AgGrid(df, gridOptions=grid_options, allow_unsafe_jscode=True)
+
 
 class ReservingAppTriangle:
     """Utility helpers for actuarial reserving tasks.
