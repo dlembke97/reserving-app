@@ -61,8 +61,12 @@ def custom_aggrid(df: pd.DataFrame, index_label: Optional[str] = None) -> dict:
         gb.configure_column(col, type=["numericColumn"], valueFormatter=formatter)
 
     grid_options = gb.build()
-    row_data = df.to_dict("records")
-    return AgGrid(row_data, gridOptions=grid_options, allow_unsafe_jscode=True)
+    # ``AgGrid`` attempts to serialize the ``data`` argument via ``DataFrame``
+    # ``to_json`` which can hit recursion limits for certain inputs.  Instead,
+    # supply the row data directly in the grid options and invoke ``AgGrid``
+    # without the ``data`` parameter to bypass that internal conversion.
+    grid_options["rowData"] = df.to_dict("records")
+    return AgGrid(gridOptions=grid_options, allow_unsafe_jscode=True)
 
 
 class ReservingAppTriangle:
