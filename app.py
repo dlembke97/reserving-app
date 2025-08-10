@@ -5,12 +5,8 @@ import streamlit as st
 from helper_functions import *
 
 
-def process_data() -> tuple[pd.DataFrame, list[str]]:
-    """Load sample data and derive categorical columns for grouping.
-
-    Returns a tuple of the processed DataFrame and a list of categorical
-    column names that can be used for grouping in the sidebar.
-    """
+def process_data() -> tuple[pd.DataFrame, list[str], list[str]]:
+    """Load sample data and derive categorical and premium columns."""
 
     triangle = cl.load_sample("clrd")
     df = triangle.to_frame().reset_index()
@@ -23,10 +19,13 @@ def process_data() -> tuple[pd.DataFrame, list[str]]:
         for col, dtype in df.dtypes.items()
         if dtype == "object" and col not in ["origin", "development"]
     ]
-    return df, cat_cols
+    prem_cols = [col for col in df.columns if "prem" in col.lower()]
+    return df, cat_cols, prem_cols
 
 
-def render_sidebar(cat_cols: list[str]) -> tuple[list[str], list[str]]:
+def render_sidebar(
+    cat_cols: list[str], prem_cols: list[str]
+) -> tuple[list[str], list[str], str | None]:
     """Render sidebar controls and return user selections."""
 
     value_options = ["IncurLoss", "CumPaidLoss"]
@@ -34,25 +33,30 @@ def render_sidebar(cat_cols: list[str]) -> tuple[list[str], list[str]]:
         "Value columns", value_options, default=value_options
     )
     group_cols = st.sidebar.multiselect("Group triangles by", cat_cols)
-    return selected_values, group_cols
+    prem_col = None
+    if prem_cols:
+        prem_col = st.sidebar.selectbox("Premium column", prem_cols, index=0)
+    return selected_values, group_cols, prem_col
 
 
 def main() -> None:
     """Streamlit application entry point."""
 
     st.title("Claims Triangle")
-    df, cat_cols = process_data()
-    selected_values, group_cols = render_sidebar(cat_cols)
+    df, cat_cols, prem_cols = process_data()
+    selected_values, group_cols, prem_col = render_sidebar(cat_cols, prem_cols)
+
+    value_cols = selected_values + ([prem_col] if prem_col else [])
 
     utils = ReservingAppTriangle(
         df,
         origin="origin",
         development="development",
-        value_cols=selected_values,
+        value_cols=value_cols,
         group_cols=group_cols,
         cumulative=True,
     )
-    utils.fit_development_model()
+    utils.fit_development_model(prem_col=prem_col)
     triangles = utils.triangles
 
     # Restructure triangles so that each grouping combination renders its
@@ -68,6 +72,8 @@ def main() -> None:
         if group_title is not None:
             st.subheader(group_title)
         for val_col, tri in val_map.items():
+            if val_col == prem_col:
+                continue
             # When no grouping columns are supplied, the value column itself
             # should serve as the subheader.  Otherwise, display the value
             # column as a caption within the group section.

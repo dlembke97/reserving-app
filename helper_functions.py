@@ -330,13 +330,26 @@ class ReservingAppTriangle:
             cdf_simp.index = ["Simple Average"]
             self.cdf_exhibit[key] = pd.concat([cdf_vol, cdf_simp])
 
-    def fit_development_model(self, development_method: str = "chainladder") -> None:
+    def fit_development_model(
+        self, development_method: str = "chainladder", prem_col: Optional[str] = None
+    ) -> None:
         """Fit a development model and store resulting exhibits.
 
         Currently supports only the deterministic Chainladder method.  For each
         triangle derived from :meth:`extract_triangles`, a ``Pipeline`` is used
         to fit the selected development model and the ultimate losses by origin
         year are captured on the ``reserve_exhibit`` attribute.
+
+        Parameters
+        ----------
+        development_method:
+            Reserving technique to apply.  Only ``"chainladder"`` is supported
+            at present.
+        prem_col:
+            Optional premium column included in ``value_cols``.  When provided,
+            the premium's latest diagonal is added as the second column of the
+            reserve exhibit and separate exhibits for the premium column are
+            omitted.
         """
 
         if not hasattr(self, "triangles"):
@@ -345,12 +358,25 @@ class ReservingAppTriangle:
         self.reserve_exhibit: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
 
         for key, tri in self.triangles.items():
+            group_title, val_col = key
+            if val_col == prem_col:
+                continue
+
             if development_method.lower() == "chainladder":
                 pipe = cl.Pipeline([("chainladder", cl.Chainladder())]).fit(tri)
                 ultimate_df = pipe["chainladder"].ultimate_.to_frame()
                 if len(ultimate_df.columns) == 1:
                     ultimate_df.columns = ["Ultimate"]
-                self.reserve_exhibit[key] = ultimate_df
+
+                premium_df = None
+                if prem_col and (group_title, prem_col) in self.triangles:
+                    premium_df = (
+                        self.triangles[(group_title, prem_col)]
+                        .latest_diagonal.to_frame(prem_col)
+                    )
+                latest_df = tri.latest_diagonal.to_frame(val_col)
+                frames = [f for f in [premium_df, latest_df, ultimate_df] if f is not None]
+                self.reserve_exhibit[key] = pd.concat(frames, axis=1)
             else:
                 raise ValueError(
                     f"Unsupported development method: {development_method}"
