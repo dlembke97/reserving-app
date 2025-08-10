@@ -87,14 +87,23 @@ def custom_aggrid(df: pd.DataFrame, index_label: Optional[str] = None) -> dict:
     # strings so that AG Grid's internal string operations do not fail on
     # numeric names.
     index_levels = df.index.nlevels
-    df = df.reset_index()
     df.columns = df.columns.map(str)
-    if index_label is not None and index_levels >= 1:
+
+    if index_label == "Year":
+        df = df.reset_index()
         df.rename(columns={df.columns[0]: index_label}, inplace=True)
+        df["Year"] = pd.PeriodIndex(df["Year"], freq="Y")
 
     df = _coerce_year_column(df, index_label)
     df = _json_safe(df)
     gb = GridOptionsBuilder.from_dataframe(df)
+
+    # Make columns resizable & allow wrapping if needed
+    gb.configure_default_column(resizable=True, wrapText=True, autoHeight=True)
+
+    # Let the grid grow to content height and avoid horizontal scroll
+    gb.configure_grid_options(domLayout="autoHeight", suppressHorizontalScroll=True)
+
     numeric_cols = df.select_dtypes(include="number").columns
     # Exclude index columns from numeric formatting to preserve values like
     # "1990" without thousands separators.
@@ -104,7 +113,8 @@ def custom_aggrid(df: pd.DataFrame, index_label: Optional[str] = None) -> dict:
         max_val = df[col].abs().max()
         if max_val > 999:
             formatter = JsCode(
-                "function(params) {return Number(params.value).toLocaleString('en-US');}"
+                "function(params) {return Number(params.value).toLocaleString('en-US', "
+                "{minimumFractionDigits:0, maximumFractionDigits:0});}"
             )
         else:
             formatter = JsCode(
@@ -114,11 +124,26 @@ def custom_aggrid(df: pd.DataFrame, index_label: Optional[str] = None) -> dict:
         gb.configure_column(col, type=["numericColumn"], valueFormatter=formatter)
 
     grid_options = gb.build()
-    # ``AgGrid`` attempts to serialize the ``data`` argument via ``DataFrame``
-    # ``to_json`` which can hit recursion limits for certain inputs.  Instead,
-    # supply the row data directly in the grid options and invoke ``AgGrid``
-    # without the ``data`` parameter to bypass that internal conversion.
-
+    # Autosize to content, then fit to container, and keep responsive
+    grid_options["onFirstDataRendered"] = JsCode(
+        """
+        function(params) {
+          let allColumnIds = [];
+          params.columnApi.getAllColumns().forEach(c => allColumnIds.push(c.getId()));
+          // 1) Measure real content widths
+          params.columnApi.autoSizeColumns(allColumnIds, false);
+          // 2) Then fill the remaining viewport neatly
+          params.api.sizeColumnsToFit();
+        }
+    """
+    )
+    grid_options["onGridSizeChanged"] = JsCode(
+        """
+        function(params) {
+          params.api.sizeColumnsToFit();
+        }
+    """
+    )
     return AgGrid(df, gridOptions=grid_options, allow_unsafe_jscode=True)
 
 
