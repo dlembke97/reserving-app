@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Tuple
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 
 
-def custom_aggrid(df: pd.DataFrame) -> dict:
+def custom_aggrid(df: pd.DataFrame, index_label: Optional[str] = None) -> dict:
     """Display ``df`` using AG Grid with numeric formatting.
 
     The index is rendered as standard columns so that it appears in the grid
@@ -22,6 +22,9 @@ def custom_aggrid(df: pd.DataFrame) -> dict:
     ----------
     df:
         DataFrame to render.
+    index_label:
+        Optional name to use for the index column once rendered.  When
+        provided, this replaces the existing index name after reset.
 
     Returns
     -------
@@ -35,6 +38,8 @@ def custom_aggrid(df: pd.DataFrame) -> dict:
     index_levels = df.index.nlevels
     df = df.reset_index()
     df.columns = df.columns.map(str)
+    if index_label is not None and index_levels >= 1:
+        df.rename(columns={df.columns[0]: index_label}, inplace=True)
 
     gb = GridOptionsBuilder.from_dataframe(df)
     numeric_cols = df.select_dtypes(include="number").columns
@@ -56,7 +61,8 @@ def custom_aggrid(df: pd.DataFrame) -> dict:
         gb.configure_column(col, type=["numericColumn"], valueFormatter=formatter)
 
     grid_options = gb.build()
-    return AgGrid(df, gridOptions=grid_options, allow_unsafe_jscode=True)
+    row_data = df.to_dict("records")
+    return AgGrid(row_data, gridOptions=grid_options, allow_unsafe_jscode=True)
 
 
 class ReservingAppTriangle:
