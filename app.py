@@ -77,15 +77,15 @@ def main() -> None:
                 st.markdown(f"**{val_col}**")
             value_tab, ata_tab, reserve_tab = st.tabs(["Values", "ATA", "Reserve Exhibit"])
             with value_tab:
-                st.dataframe(tri.to_frame())
+                custom_aggrid(tri.to_frame(), index_label="Year")
             with ata_tab:
-                st.dataframe(tri.link_ratio.to_frame())
+                custom_aggrid(tri.link_ratio.to_frame(), index_label="Year")
                 st.markdown("**LDFs**")
-                st.dataframe(utils.ldf_exhibit[(group_title, val_col)])
+                custom_aggrid(utils.ldf_exhibit[(group_title, val_col)], index_label="Year")
                 st.markdown("**CDFs**")
-                st.dataframe(utils.cdf_exhibit[(group_title, val_col)])
+                custom_aggrid(utils.cdf_exhibit[(group_title, val_col)], index_label="Year")
             with reserve_tab:
-                st.dataframe(utils.reserve_exhibit[(group_title, val_col)])
+                custom_aggrid(utils.reserve_exhibit[(group_title, val_col)], index_label="Year")
         st.write("---")
 
 

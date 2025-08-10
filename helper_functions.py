@@ -1,6 +1,125 @@
 import chainladder as cl
 import pandas as pd
 from typing import Dict, List, Optional, Tuple
+import streamlit as st
+from pandas.api.types import (
+    is_period_dtype,
+    is_datetime64_any_dtype,
+    is_integer_dtype,
+    is_string_dtype,
+)
+from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+
+
+def _coerce_year_column(df: pd.DataFrame, colname: str = "Year") -> pd.DataFrame:
+    df = df.copy()
+
+    # ensure "Year" exists (might be in the index)
+    if colname not in df.columns:
+        df = df.reset_index().rename(columns={"index": colname})
+
+    col = df[colname]
+
+    if is_period_dtype(col):
+        # Period -> timestamp -> year
+        y = col.dt.to_timestamp().dt.year
+    elif is_datetime64_any_dtype(col):
+        # datetime64[ns] (or tz-aware)
+        y = (
+            col.dt.tz_localize(None) if getattr(col.dt, "tz", None) is not None else col
+        ).dt.year
+    else:
+        # try to parse strings/numbers into datetimes; if that fails, fall back to numeric year
+        parsed = pd.to_datetime(col, errors="coerce")
+        if parsed.notna().any():
+            y = parsed.dt.year
+        else:
+            y = pd.to_numeric(col, errors="coerce")
+
+    # keep nullable ints so missing years don’t crash
+    df[colname] = y.astype("Int64")
+    return df
+
+
+def _json_safe(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    AgGrid sends data as JSON; JSON can't contain NaN/Infinity/<NA>.
+    Convert all missing to None and avoid NumPy scalars that serialize to NaN.
+    """
+    df = df.copy()
+    # Convert pandas NA/NaN to None
+    df = df.where(df.notna(), None)
+    # Make sure nullable integers don’t re-emit NaN; cast each column to Python objects
+    for c in df.columns:
+        if pd.api.types.is_integer_dtype(df[c]) and str(df[c].dtype).startswith("Int"):
+            df[c] = df[c].astype(object)  # keeps None for missing
+    return df
+
+
+def custom_aggrid(df: pd.DataFrame, index_label: Optional[str] = None) -> dict:
+    """Display ``df`` using AG Grid with numeric formatting.
+
+    The index is rendered as standard columns so that it appears in the grid
+    output.  All column labels are coerced to strings to avoid JavaScript
+    errors when numeric column names are encountered.
+
+    Numeric columns are formatted depending on whether their absolute maximum
+    value exceeds 999. Values greater than this threshold are shown with a
+    thousands separator and no decimals. Otherwise values are displayed with
+    two decimal places. Sorting remains based on the underlying numeric value
+    via ``valueFormatter`` JavaScript functions.
+
+    Parameters
+    ----------
+    df:
+        DataFrame to render.
+    index_label:
+        Optional name to use for the index column once rendered.  When
+        provided, this replaces the existing index name after reset.
+
+    Returns
+    -------
+    dict
+        Response returned by :func:`st_aggrid.AgGrid`.
+    """
+
+    # Display the index as regular columns and ensure all column labels are
+    # strings so that AG Grid's internal string operations do not fail on
+    # numeric names.
+    index_levels = df.index.nlevels
+    df = df.reset_index()
+    df.columns = df.columns.map(str)
+    if index_label is not None and index_levels >= 1:
+        df.rename(columns={df.columns[0]: index_label}, inplace=True)
+
+    df = _coerce_year_column(df, index_label)
+    df = _json_safe(df)
+    gb = GridOptionsBuilder.from_dataframe(df)
+    numeric_cols = df.select_dtypes(include="number").columns
+    # Exclude index columns from numeric formatting to preserve values like
+    # "1990" without thousands separators.
+    index_cols = df.columns[:index_levels]
+    numeric_cols = [col for col in numeric_cols if col not in index_cols]
+    for col in numeric_cols:
+        max_val = df[col].abs().max()
+        if max_val > 999:
+            formatter = JsCode(
+                "function(params) {return Number(params.value).toLocaleString('en-US');}"
+            )
+        else:
+            formatter = JsCode(
+                "function(params) {return Number(params.value).toLocaleString('en-US', "
+                "{minimumFractionDigits:2, maximumFractionDigits:2});}"
+            )
+        gb.configure_column(col, type=["numericColumn"], valueFormatter=formatter)
+
+    grid_options = gb.build()
+    # ``AgGrid`` attempts to serialize the ``data`` argument via ``DataFrame``
+    # ``to_json`` which can hit recursion limits for certain inputs.  Instead,
+    # supply the row data directly in the grid options and invoke ``AgGrid``
+    # without the ``data`` parameter to bypass that internal conversion.
+
+    return AgGrid(df, gridOptions=grid_options, allow_unsafe_jscode=True)
 
 
 class ReservingAppTriangle:
