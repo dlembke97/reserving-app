@@ -185,3 +185,29 @@ class ReservingAppTriangle:
             cdf_simp = dev_simp.cdf_.to_frame()
             cdf_simp.index = ["Simple Average"]
             self.cdf_exhibit[key] = pd.concat([cdf_vol, cdf_simp])
+
+    def fit_development_model(self, development_method: str = "chainladder") -> None:
+        """Fit a development model and store resulting exhibits.
+
+        Currently supports only the deterministic Chainladder method.  For each
+        triangle derived from :meth:`extract_triangles`, a ``Pipeline`` is used
+        to fit the selected development model and the ultimate losses by origin
+        year are captured on the ``reserve_exhibit`` attribute.
+        """
+
+        if not hasattr(self, "triangles"):
+            self.triangles = self.extract_triangles()
+
+        self.reserve_exhibit: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
+
+        for key, tri in self.triangles.items():
+            if development_method.lower() == "chainladder":
+                pipe = cl.Pipeline([("chainladder", cl.Chainladder())]).fit(tri)
+                ultimate_df = pipe["chainladder"].ultimate_.to_frame()
+                if len(ultimate_df.columns) == 1:
+                    ultimate_df.columns = ["Ultimate"]
+                self.reserve_exhibit[key] = ultimate_df
+            else:
+                raise ValueError(
+                    f"Unsupported development method: {development_method}"
+                )

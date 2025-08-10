@@ -52,6 +52,7 @@ def main() -> None:
         group_cols=group_cols,
         cumulative=True,
     )
+    utils.fit_development_model()
     triangles = utils.triangles
 
     # Restructure triangles so that each grouping combination renders its
@@ -74,7 +75,7 @@ def main() -> None:
                 st.subheader(val_col)
             else:
                 st.markdown(f"**{val_col}**")
-            value_tab, ata_tab = st.tabs(["Values", "ATA"])
+            value_tab, ata_tab, reserve_tab = st.tabs(["Values", "ATA", "Reserve Exhibit"])
             with value_tab:
                 st.dataframe(tri.to_frame())
             with ata_tab:
@@ -83,6 +84,8 @@ def main() -> None:
                 st.dataframe(utils.ldf_exhibit[(group_title, val_col)])
                 st.markdown("**CDFs**")
                 st.dataframe(utils.cdf_exhibit[(group_title, val_col)])
+            with reserve_tab:
+                st.dataframe(utils.reserve_exhibit[(group_title, val_col)])
         st.write("---")
 
 
