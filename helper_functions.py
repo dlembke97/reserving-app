@@ -8,6 +8,10 @@ from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 def custom_aggrid(df: pd.DataFrame) -> dict:
     """Display ``df`` using AG Grid with numeric formatting.
 
+    The index is rendered as standard columns so that it appears in the grid
+    output.  All column labels are coerced to strings to avoid JavaScript
+    errors when numeric column names are encountered.
+
     Numeric columns are formatted depending on whether their absolute maximum
     value exceeds 999. Values greater than this threshold are shown with a
     thousands separator and no decimals. Otherwise values are displayed with
@@ -25,8 +29,19 @@ def custom_aggrid(df: pd.DataFrame) -> dict:
         Response returned by :func:`st_aggrid.AgGrid`.
     """
 
+    # Display the index as regular columns and ensure all column labels are
+    # strings so that AG Grid's internal string operations do not fail on
+    # numeric names.
+    index_levels = df.index.nlevels
+    df = df.reset_index()
+    df.columns = df.columns.map(str)
+
     gb = GridOptionsBuilder.from_dataframe(df)
     numeric_cols = df.select_dtypes(include="number").columns
+    # Exclude index columns from numeric formatting to preserve values like
+    # "1990" without thousands separators.
+    index_cols = df.columns[:index_levels]
+    numeric_cols = [col for col in numeric_cols if col not in index_cols]
     for col in numeric_cols:
         max_val = df[col].abs().max()
         if max_val > 999:
