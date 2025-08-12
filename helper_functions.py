@@ -89,12 +89,6 @@ def custom_aggrid(df: pd.DataFrame, index_label: Optional[str] = None) -> dict:
     index_levels = df.index.nlevels
     df.columns = df.columns.map(str)
 
-    if index_label == "Year":
-        df = df.reset_index()
-        df.rename(columns={df.columns[0]: index_label}, inplace=True)
-        df["Year"] = pd.PeriodIndex(df["Year"], freq="Y")
-
-    df = _coerce_year_column(df, index_label)
     df = _json_safe(df)
     gb = GridOptionsBuilder.from_dataframe(df)
 
@@ -144,7 +138,8 @@ def custom_aggrid(df: pd.DataFrame, index_label: Optional[str] = None) -> dict:
         }
     """
     )
-    return AgGrid(df, gridOptions=grid_options, allow_unsafe_jscode=True)
+    st.dataframe(df, hide_index=True)
+    # return AgGrid(df, gridOptions=grid_options, allow_unsafe_jscode=True)
 
 
 class ReservingAppTriangle:
@@ -248,10 +243,29 @@ class ReservingAppTriangle:
                     f"{col}={val}" for col, val in zip(group_cols, row)
                 )
                 for val_col in value_cols:
-                    triangles[(group_title, val_col)] = sub_tri[val_col].to_frame()
+                    triangles[(group_title, val_col)] = (
+                        sub_tri[val_col].to_frame().reset_index()
+                    )
+                    triangles[(group_title, val_col)].rename(
+                        columns={triangles[(group_title, val_col)].columns[0]: "Year"},
+                        inplace=True,
+                    )
+                    triangles[(group_title, val_col)]["Year"] = pd.PeriodIndex(
+                        triangles[(group_title, val_col)]["Year"], freq="Y"
+                    )
         else:
             for val_col in value_cols:
-                triangles[(None, val_col)] = self.triangle[val_col].to_frame()
+                triangles[(None, val_col)] = (
+                    self.triangle[val_col].to_frame().reset_index()
+                )
+                triangles[(None, val_col)].rename(
+                    columns={triangles[(None, val_col)].columns[0]: "Year"},
+                    inplace=True,
+                )
+                triangles[(None, val_col)]["Year"] = pd.PeriodIndex(
+                    triangles[(None, val_col)]["Year"], freq="Y"
+                )
+
         return triangles
 
     def extract_triangles(
@@ -319,15 +333,15 @@ class ReservingAppTriangle:
             dev_simp = cl.Development(average="simple").fit(tri)
 
             ldf_vol = dev_vol.ldf_.to_frame()
-            ldf_vol.index = ["Volume Weighted"]
+            ldf_vol["Avg Method"] = ["Volume Weighted"]
             ldf_simp = dev_simp.ldf_.to_frame()
-            ldf_simp.index = ["Simple Average"]
+            ldf_simp["Avg Method"] = ["Simple Average"]
             self.ldf_exhibit[key] = pd.concat([ldf_vol, ldf_simp])
 
             cdf_vol = dev_vol.cdf_.to_frame()
-            cdf_vol.index = ["Volume Weighted"]
+            cdf_vol["Avg Method"] = ["Volume Weighted"]
             cdf_simp = dev_simp.cdf_.to_frame()
-            cdf_simp.index = ["Simple Average"]
+            cdf_simp["Avg Method"] = ["Simple Average"]
             self.cdf_exhibit[key] = pd.concat([cdf_vol, cdf_simp])
 
     def fit_development_model(
@@ -370,12 +384,13 @@ class ReservingAppTriangle:
 
                 premium_df = None
                 if prem_col and (group_title, prem_col) in self.triangles:
-                    premium_df = (
-                        self.triangles[(group_title, prem_col)]
-                        .latest_diagonal.to_frame(prem_col)
-                    )
+                    premium_df = self.triangles[
+                        (group_title, prem_col)
+                    ].latest_diagonal.to_frame(prem_col)
                 latest_df = tri.latest_diagonal.to_frame(val_col)
-                frames = [f for f in [premium_df, latest_df, ultimate_df] if f is not None]
+                frames = [
+                    f for f in [premium_df, latest_df, ultimate_df] if f is not None
+                ]
                 self.reserve_exhibit[key] = pd.concat(frames, axis=1)
             else:
                 raise ValueError(

@@ -41,7 +41,7 @@ def render_sidebar(
 
 def main() -> None:
     """Streamlit application entry point."""
-
+    st.set_page_config(layout="wide")
     st.title("Claims Triangle")
     df, cat_cols, prem_cols = process_data()
     selected_values, group_cols, prem_col = render_sidebar(cat_cols, prem_cols)
@@ -58,6 +58,7 @@ def main() -> None:
     )
     utils.fit_development_model(prem_col=prem_col)
     triangles = utils.triangles
+    triangles_dfs = utils.triangle_dfs
 
     # Restructure triangles so that each grouping combination renders its
     # associated value column triangles together rather than as individual
@@ -65,7 +66,7 @@ def main() -> None:
     # them by ``group_title`` first, then iterate the value columns within
     # each group.
     grouped: dict[str | None, dict[str, cl.Triangle]] = {}
-    for (group_title, val_col), tri in triangles.items():
+    for (group_title, val_col), tri in triangles_dfs.items():
         grouped.setdefault(group_title, {})[val_col] = tri
 
     for group_title, val_map in grouped.items():
@@ -85,14 +86,19 @@ def main() -> None:
                 ["Values", "ATA", "Reserve Exhibit"]
             )
             with value_tab:
-                custom_aggrid(tri.to_frame(), index_label="Year")
+                custom_aggrid(tri)
             with ata_tab:
-                custom_aggrid(tri.link_ratio.to_frame(), index_label="Year")
+                custom_aggrid(tri.link_ratio.to_frame())
                 st.markdown("**LDFs**")
-                custom_aggrid(utils.ldf_exhibit[(group_title, val_col)])
+                custom_aggrid(
+                    utils.ldf_exhibit[(group_title, val_col)],
+                )
                 st.markdown("**CDFs**")
-                custom_aggrid(utils.cdf_exhibit[(group_title, val_col)])
+                custom_aggrid(
+                    utils.cdf_exhibit[(group_title, val_col)],
+                )
             with reserve_tab:
+                st.markdown("**Reserve Exhibit**")
                 custom_aggrid(
                     utils.reserve_exhibit[(group_title, val_col)], index_label="Year"
                 )
