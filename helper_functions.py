@@ -411,16 +411,24 @@ class ReservingAppTriangle:
 
             if development_method.lower() == "chainladder":
                 pipe = cl.Pipeline([("chainladder", cl.Chainladder())]).fit(tri)
-                ultimate_df = pipe["chainladder"].ultimate_.to_frame()
+                ultimate_df = self.convert_triangle_to_df(
+                    triangle=pipe["chainladder"].ultimate_, index_name="Year"
+                )
                 if len(ultimate_df.columns) == 1:
-                    ultimate_df.columns = ["Ultimate"]
+                    ultimate_df.columns = ["Chainladder Ultimate"]
 
                 premium_df = None
                 if prem_col and (group_title, prem_col) in self.triangles:
-                    premium_df = self.triangles[
-                        (group_title, prem_col)
-                    ].latest_diagonal.to_frame(prem_col)
-                latest_df = tri.latest_diagonal.to_frame(val_col)
+                    premium_df = self.convert_triangle_to_df(
+                        triangle=self.triangles[
+                            (group_title, prem_col)
+                        ].latest_diagonal,
+                        index_name="Year",
+                    )
+                latest_df = self.convert_triangle_to_df(
+                    tri.latest_diagonal[val_col],
+                    index_name="Year",
+                )
                 frames = [
                     f for f in [premium_df, latest_df, ultimate_df] if f is not None
                 ]
