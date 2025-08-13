@@ -112,11 +112,16 @@ def custom_st_dataframe(df: pd.DataFrame) -> None:
     """
 
     index_levels = df.index.nlevels
+    df = df.copy()
     df.columns = df.columns.map(str)
 
     numeric_cols = df.select_dtypes(include="number").columns
     index_cols = df.columns[:index_levels]
     numeric_cols = [c for c in numeric_cols if c not in index_cols]
+
+    # Ensure numeric columns are float so missing values (None/pd.NA) don't
+    # trigger formatting errors when passed through ``st.column_config``.
+    df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors="coerce")
 
     column_config: dict[str, st.column_config.NumberColumn] = {}
     for col in numeric_cols:
