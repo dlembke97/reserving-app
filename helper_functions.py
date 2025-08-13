@@ -176,7 +176,7 @@ class ReservingAppTriangle:
         self.triangle_ata_dfs: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
 
         # Compute development factor exhibits for each subgroup
-        self.get_dev_factor_exhibit()
+        self.get_dev_factor_exhibit(methods=["volume", "simple"])
 
     def create_triangle(
         self,
@@ -325,51 +325,57 @@ class ReservingAppTriangle:
                 triangles[(None, val_col)] = self.triangle[val_col]
         return triangles
 
-    def get_dev_factor_exhibit(self) -> None:
+    def get_dev_factor_exhibit(self, methods: Optional[List[str]] = None) -> None:
         """Generate LDF and CDF exhibits for each subgroup.
 
-        This method fits both volume weighted and simple average development
-        models to every triangle produced by :meth:`extract_triangles`.  The
-        resulting LDF and CDF tables are stored on ``ldf_exhibit`` and
-        ``cdf_exhibit`` dictionaries keyed by ``(group_title, value_col)``.
-        The underlying ``chainladder.Triangle`` objects are also stored on the
-        ``triangles`` attribute for easy access when rendering link ratios.
+        This method fits development models using the averaging methods
+        provided in ``methods`` to every triangle produced by
+        :meth:`extract_triangles`. The resulting LDF and CDF tables are stored
+        on ``ldf_exhibit`` and ``cdf_exhibit`` dictionaries keyed by
+        ``(group_title, value_col)``. The underlying ``chainladder.Triangle``
+        objects are also stored on the ``triangles`` attribute for easy access
+        when rendering link ratios.
+
+        Parameters
+        ----------
+        methods:
+            List of development averaging methods to apply. Defaults to
+            ``["volume", "simple"]``.
         """
 
         if self.triangle is None:
             raise ValueError("No triangle available. Call create_triangle first.")
+
+        methods = methods or ["volume", "simple"]
 
         self.triangles = self.extract_triangles()
         self.triangle_ata_dfs: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
         self.ldf_exhibit: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
         self.cdf_exhibit: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
 
+        labels = {"volume": "Volume Weighted", "simple": "Simple Average"}
+
         for key, tri in self.triangles.items():
             self.triangle_ata_dfs[key] = self.convert_triangle_to_df(
                 tri.age_to_age, index_name="Year"
             )
-            dev_vol = cl.Development().fit(tri)
-            dev_simp = cl.Development(average="simple").fit(tri)
-
-            ldf_vol_df = self.convert_triangle_to_df(
-                dev_vol.ldf_, index_name="Avg Method"
-            )
-            ldf_vol_df["Avg Method"] = "Volume Weighted"
-            ldf_simp_df = self.convert_triangle_to_df(
-                dev_simp.ldf_, index_name="Avg Method"
-            )
-            ldf_simp_df["Avg Method"] = "Simple Average"
-            self.ldf_exhibit[key] = pd.concat([ldf_vol_df, ldf_simp_df])
-
-            cdf_vol_df = self.convert_triangle_to_df(
-                dev_vol.cdf_, index_name="Avg Method"
-            )
-            cdf_vol_df["Avg Method"] = "Volume Weighted"
-            cdf_simp_df = self.convert_triangle_to_df(
-                dev_simp.cdf_, index_name="Avg Method"
-            )
-            cdf_simp_df["Avg Method"] = "Simple Average"
-            self.cdf_exhibit[key] = pd.concat([cdf_vol_df, cdf_simp_df])
+            ldf_dfs: List[pd.DataFrame] = []
+            cdf_dfs: List[pd.DataFrame] = []
+            for method in methods:
+                dev = (
+                    cl.Development().fit(tri)
+                    if method == "volume"
+                    else cl.Development(average=method).fit(tri)
+                )
+                label = labels.get(method, method.title())
+                for attr, dfs in [("ldf_", ldf_dfs), ("cdf_", cdf_dfs)]:
+                    df = self.convert_triangle_to_df(
+                        getattr(dev, attr), index_name="Avg Method"
+                    )
+                    df["Avg Method"] = label
+                    dfs.append(df)
+            self.ldf_exhibit[key] = pd.concat(ldf_dfs)
+            self.cdf_exhibit[key] = pd.concat(cdf_dfs)
 
     def fit_development_model(
         self, development_method: str = "chainladder", prem_col: Optional[str] = None
