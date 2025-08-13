@@ -494,13 +494,9 @@ class ReservingAppTriangle:
             premium_df = premium_dfs.get(group_title)
 
             frames = [f for f in [premium_df, latest_df, ultimate_df] if f is not None]
-            st.write(premium_df, hide_index=True)
-            st.write(latest_df, hide_index=True)
-            st.write(ultimate_df, hide_index=True)
             self.reserve_exhibit[key] = reduce(
                 lambda left, right: pd.merge(left, right, on="Year", how="outer"),
                 frames,
             )
-            st.write(self.reserve_exhibit[key], hide_index=True)
 
         return self.reserve_exhibit
