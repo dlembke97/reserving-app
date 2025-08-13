@@ -232,6 +232,35 @@ class ReservingAppTriangle:
             df[index_name] = pd.PeriodIndex(df[index_name], freq="Y")
         return df
 
+    def convert_and_label_triangle(
+        self,
+        triangle: cl.Triangle,
+        value_name: str,
+        index_name: str = "Year",
+    ) -> pd.DataFrame:
+        """Convert ``triangle`` to a two-column DataFrame with a named value.
+
+        Parameters
+        ----------
+        triangle:
+            Single column ``chainladder.Triangle`` to convert.
+        value_name:
+            Name to assign to the value column.
+        index_name:
+            Name to assign to the first column after the index is reset.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame containing the index column and the renamed value column.
+        """
+
+        df = self.convert_triangle_to_df(triangle=triangle, index_name=index_name)
+        if df.shape[1] >= 2:
+            df = df.iloc[:, :2]
+            df.rename(columns={df.columns[1]: value_name}, inplace=True)
+        return df
+
     def extract_triangle_dfs(
         self,
     ) -> Dict[Tuple[Optional[str], str], pd.DataFrame]:
@@ -434,8 +463,10 @@ class ReservingAppTriangle:
         if prem_col:
             for (group_title, val_col), tri in self.triangles.items():
                 if val_col == prem_col:
-                    premium_dfs[group_title] = self.convert_triangle_to_df(
-                        triangle=tri.latest_diagonal, index_name="Year"
+                    premium_dfs[group_title] = self.convert_and_label_triangle(
+                        triangle=tri.latest_diagonal,
+                        value_name=prem_col,
+                        index_name="Year",
                     )
 
         self.reserve_exhibit: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
@@ -447,14 +478,16 @@ class ReservingAppTriangle:
 
             tri = self.triangles[key]
 
-            ultimate_df = self.convert_triangle_to_df(
-                triangle=model["chainladder"].ultimate_, index_name="Year"
+            ultimate_df = self.convert_and_label_triangle(
+                triangle=model["chainladder"].ultimate_,
+                value_name="Chainladder Ultimate",
+                index_name="Year",
             )
-            if len(ultimate_df.columns) == 1:
-                ultimate_df.columns = ["Chainladder Ultimate"]
 
-            latest_df = self.convert_triangle_to_df(
-                triangle=tri.latest_diagonal, index_name="Year"
+            latest_df = self.convert_and_label_triangle(
+                triangle=tri.latest_diagonal,
+                value_name=val_col,
+                index_name="Year",
             )
 
             premium_df = premium_dfs.get(group_title)
