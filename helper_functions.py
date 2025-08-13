@@ -346,22 +346,26 @@ class ReservingAppTriangle:
 
         for key, tri in self.triangles.items():
             self.triangle_ata_dfs[key] = self.convert_triangle_to_df(
-                tri.ata, index_name="Development"
+                tri.age_to_age, index_name="Year"
             )
             dev_vol = cl.Development().fit(tri)
             dev_simp = cl.Development(average="simple").fit(tri)
 
-            ldf_vol = dev_vol.ldf_.to_frame()
-            ldf_vol.index = ["Volume Weighted"]
-            ldf_simp = dev_simp.ldf_.to_frame()
-            ldf_simp.index = ["Simple Average"]
-            self.ldf_exhibit[key] = pd.concat([ldf_vol, ldf_simp])
+            ldf_vol_df = self.convert_triangle_to_df(
+                dev_vol.ldf_, index_name="Avg Method"
+            )
+            ldf_simp_df = self.convert_triangle_to_df(
+                dev_simp.ldf_, index_name="Avg Method"
+            )
+            self.ldf_exhibit[key] = pd.concat([ldf_vol_df, ldf_simp_df])
 
-            cdf_vol = dev_vol.cdf_.to_frame()
-            cdf_vol.index = ["Volume Weighted"]
-            cdf_simp = dev_simp.cdf_.to_frame()
-            cdf_simp.index = ["Simple Average"]
-            self.cdf_exhibit[key] = pd.concat([cdf_vol, cdf_simp])
+            cdf_vol_df = self.convert_triangle_to_df(
+                dev_vol.cdf_, index_name="Avg Method"
+            )
+            cdf_simp_df = self.convert_triangle_to_df(
+                dev_simp.cdf_, index_name="Avg Method"
+            )
+            self.cdf_exhibit[key] = pd.concat([cdf_vol_df, cdf_simp_df])
 
     def fit_development_model(
         self, development_method: str = "chainladder", prem_col: Optional[str] = None
