@@ -91,16 +91,16 @@ def main() -> None:
                 ["Values", "ATA", "Reserve Exhibit"]
             )
             with value_tab:
-                custom_aggrid(tri_map.get("values", pd.DataFrame()))
+                custom_st_dataframe(tri_map.get("values", pd.DataFrame()))
             with ata_tab:
-                custom_aggrid(tri_map.get("ata", pd.DataFrame()))
+                custom_st_dataframe(tri_map.get("ata", pd.DataFrame()))
                 st.markdown("**LDFs**")
-                custom_aggrid(utils.ldf_exhibit[(group_title, val_col)])
+                custom_st_dataframe(utils.ldf_exhibit[(group_title, val_col)])
                 st.markdown("**CDFs**")
-                custom_aggrid(utils.cdf_exhibit[(group_title, val_col)])
+                custom_st_dataframe(utils.cdf_exhibit[(group_title, val_col)])
             with reserve_tab:
                 st.markdown("**Reserve Exhibit**")
-                custom_aggrid(utils.reserve_exhibit[(group_title, val_col)])
+                custom_st_dataframe(utils.reserve_exhibit[(group_title, val_col)])
         st.write("---")
 
 

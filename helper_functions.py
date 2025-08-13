@@ -9,7 +9,10 @@ from pandas.api.types import (
     is_integer_dtype,
     is_string_dtype,
 )
-from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+try:  # st_aggrid is optional
+    from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+except Exception:  # pragma: no cover
+    AgGrid = GridOptionsBuilder = JsCode = None
 
 
 def _coerce_year_column(df: pd.DataFrame, colname: str = "Year") -> pd.DataFrame:
@@ -42,66 +45,25 @@ def _coerce_year_column(df: pd.DataFrame, colname: str = "Year") -> pd.DataFrame
     return df
 
 
-def _json_safe(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    AgGrid sends data as JSON; JSON can't contain NaN/Infinity/<NA>.
-    Convert all missing to None and avoid NumPy scalars that serialize to NaN.
-    """
-    df = df.copy()
-    # Convert pandas NA/NaN to None
-    df = df.where(df.notna(), None)
-    # Make sure nullable integers don’t re-emit NaN; cast each column to Python objects
-    for c in df.columns:
-        if pd.api.types.is_integer_dtype(df[c]) and str(df[c].dtype).startswith("Int"):
-            df[c] = df[c].astype(object)  # keeps None for missing
-    return df
-
-
 def custom_aggrid(df: pd.DataFrame) -> dict:
     """Display ``df`` using AG Grid with numeric formatting.
 
-    The index is rendered as standard columns so that it appears in the grid
-    output.  All column labels are coerced to strings to avoid JavaScript
-    errors when numeric column names are encountered.
-
-    Numeric columns are formatted depending on whether their absolute maximum
-    value exceeds 999. Values greater than this threshold are shown with a
-    thousands separator and no decimals. Otherwise values are displayed with
-    two decimal places. Sorting remains based on the underlying numeric value
-    via ``valueFormatter`` JavaScript functions.
-
-    Parameters
-    ----------
-    df:
-        DataFrame to render.
-    index_label:
-        Optional name to use for the index column once rendered.  When
-        provided, this replaces the existing index name after reset.
-
-    Returns
-    -------
-    dict
-        Response returned by :func:`st_aggrid.AgGrid`.
+    If ``st_aggrid`` is unavailable the data is rendered using
+    :func:`custom_st_dataframe` to avoid runtime errors.
     """
 
-    # Display the index as regular columns and ensure all column labels are
-    # strings so that AG Grid's internal string operations do not fail on
-    # numeric names.
+    if GridOptionsBuilder is None:
+        custom_st_dataframe(df)
+        return {}
+
     index_levels = df.index.nlevels
     df.columns = df.columns.map(str)
 
-    df = _json_safe(df)
     gb = GridOptionsBuilder.from_dataframe(df)
-
-    # Make columns resizable & allow wrapping if needed
     gb.configure_default_column(resizable=True, wrapText=True, autoHeight=True)
-
-    # Let the grid grow to content height and avoid horizontal scroll
     gb.configure_grid_options(domLayout="autoHeight", suppressHorizontalScroll=True)
 
     numeric_cols = df.select_dtypes(include="number").columns
-    # Exclude index columns from numeric formatting to preserve values like
-    # "1990" without thousands separators.
     index_cols = df.columns[:index_levels]
     numeric_cols = [col for col in numeric_cols if col not in index_cols]
     for col in numeric_cols:
@@ -119,15 +81,12 @@ def custom_aggrid(df: pd.DataFrame) -> dict:
         gb.configure_column(col, type=["numericColumn"], valueFormatter=formatter)
 
     grid_options = gb.build()
-    # Autosize to content, then fit to container, and keep responsive
     grid_options["onFirstDataRendered"] = JsCode(
         """
         function(params) {
           let allColumnIds = [];
           params.columnApi.getAllColumns().forEach(c => allColumnIds.push(c.getId()));
-          // 1) Measure real content widths
           params.columnApi.autoSizeColumns(allColumnIds, false);
-          // 2) Then fill the remaining viewport neatly
           params.api.sizeColumnsToFit();
         }
     """
@@ -139,8 +98,33 @@ def custom_aggrid(df: pd.DataFrame) -> dict:
         }
     """
     )
-    st.dataframe(df, hide_index=True)
-    # return AgGrid(df, gridOptions=grid_options, allow_unsafe_jscode=True)
+    return AgGrid(df, gridOptions=grid_options, allow_unsafe_jscode=True)
+
+
+def custom_st_dataframe(df: pd.DataFrame) -> None:
+    """Display ``df`` with numeric formatting via ``st.dataframe``.
+
+    Numeric columns are formatted based on their absolute maximum values. When
+    the maximum exceeds ``999`` they are rendered with a thousands separator and
+    no decimals; otherwise two decimal places are shown.  Sorting remains
+    numeric because the underlying column dtypes are preserved and formatting is
+    handled through ``column_config``.
+    """
+
+    index_levels = df.index.nlevels
+    df.columns = df.columns.map(str)
+
+    numeric_cols = df.select_dtypes(include="number").columns
+    index_cols = df.columns[:index_levels]
+    numeric_cols = [c for c in numeric_cols if c not in index_cols]
+
+    column_config: dict[str, st.column_config.NumberColumn] = {}
+    for col in numeric_cols:
+        max_val = df[col].abs().max()
+        fmt = "%,.0f" if max_val > 999 else "%,.2f"
+        column_config[col] = st.column_config.NumberColumn(format=fmt)
+
+    st.dataframe(df, hide_index=True, column_config=column_config)
 
 
 class ReservingAppTriangle:
