@@ -112,11 +112,23 @@ def custom_st_dataframe(df: pd.DataFrame) -> None:
     """
 
     index_levels = df.index.nlevels
+    df = df.copy()
     df.columns = df.columns.map(str)
 
-    numeric_cols = df.select_dtypes(include="number").columns
-    index_cols = df.columns[:index_levels]
-    numeric_cols = [c for c in numeric_cols if c not in index_cols]
+    index_cols = list(df.columns[:index_levels])
+    numeric_cols: list[str] = []
+
+    # Coerce any column that can be interpreted numerically (even if its dtype
+    # is ``object`` due to ``None``/``pd.NA``) so ``st.column_config`` receives
+    # clean ``float`` data. Columns that are entirely non-numeric remain
+    # untouched and won't receive a numeric formatter.
+    for col in df.columns:
+        if col in index_cols:
+            continue
+        converted = pd.to_numeric(df[col], errors="coerce")
+        if converted.notna().any():
+            df[col] = converted
+            numeric_cols.append(col)
 
     column_config: dict[str, st.column_config.NumberColumn] = {}
     for col in numeric_cols:
