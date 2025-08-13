@@ -105,7 +105,6 @@ def custom_aggrid(df: pd.DataFrame) -> dict:
     numeric_cols = [col for col in numeric_cols if col not in index_cols]
     for col in numeric_cols:
         max_val = df[col].abs().max()
-        st.write(max_val)
         if max_val > 999:
             formatter = JsCode(
                 "function(params) {return Number(params.value).toLocaleString('en-US', "
@@ -461,6 +460,10 @@ class ReservingAppTriangle:
             premium_df = premium_dfs.get(group_title)
 
             frames = [f for f in [premium_df, latest_df, ultimate_df] if f is not None]
+            st.write(premium_df, hide_index=True)
+            st.write(latest_df, hide_index=True)
+            st.write(ultimate_df, hide_index=True)
             self.reserve_exhibit[key] = pd.concat(frames, axis=1)
+            st.write(self.reserve_exhibit[key], hide_index=True)
 
         return self.reserve_exhibit
