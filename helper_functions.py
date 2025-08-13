@@ -56,6 +56,27 @@ def _json_safe(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def convert_triangle_to_df(triangle: cl.Triangle) -> pd.DataFrame:
+    """Convert a ``chainladder.Triangle`` to a DataFrame with a ``Year`` column.
+
+    Parameters
+    ----------
+    triangle:
+        Single column ``chainladder.Triangle`` to convert.
+
+    Returns
+    -------
+    pd.DataFrame
+        ``triangle`` converted to a DataFrame with the index reset, the first
+        column renamed to ``Year`` and coerced to an annual ``PeriodIndex``.
+    """
+
+    df = triangle.to_frame().reset_index()
+    df.rename(columns={df.columns[0]: "Year"}, inplace=True)
+    df["Year"] = pd.PeriodIndex(df["Year"], freq="Y")
+    return df
+
+
 def custom_aggrid(df: pd.DataFrame, index_label: Optional[str] = None) -> dict:
     """Display ``df`` using AG Grid with numeric formatting.
 
@@ -243,27 +264,13 @@ class ReservingAppTriangle:
                     f"{col}={val}" for col, val in zip(group_cols, row)
                 )
                 for val_col in value_cols:
-                    triangles[(group_title, val_col)] = (
-                        sub_tri[val_col].to_frame().reset_index()
-                    )
-                    triangles[(group_title, val_col)].rename(
-                        columns={triangles[(group_title, val_col)].columns[0]: "Year"},
-                        inplace=True,
-                    )
-                    triangles[(group_title, val_col)]["Year"] = pd.PeriodIndex(
-                        triangles[(group_title, val_col)]["Year"], freq="Y"
+                    triangles[(group_title, val_col)] = convert_triangle_to_df(
+                        sub_tri[val_col]
                     )
         else:
             for val_col in value_cols:
-                triangles[(None, val_col)] = (
-                    self.triangle[val_col].to_frame().reset_index()
-                )
-                triangles[(None, val_col)].rename(
-                    columns={triangles[(None, val_col)].columns[0]: "Year"},
-                    inplace=True,
-                )
-                triangles[(None, val_col)]["Year"] = pd.PeriodIndex(
-                    triangles[(None, val_col)]["Year"], freq="Y"
+                triangles[(None, val_col)] = convert_triangle_to_df(
+                    self.triangle[val_col]
                 )
 
         return triangles
