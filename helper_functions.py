@@ -1,5 +1,6 @@
 import chainladder as cl
 import pandas as pd
+from functools import reduce
 from typing import Dict, List, Optional, Tuple
 import streamlit as st
 from pandas.api.types import (
@@ -496,7 +497,10 @@ class ReservingAppTriangle:
             st.write(premium_df, hide_index=True)
             st.write(latest_df, hide_index=True)
             st.write(ultimate_df, hide_index=True)
-            self.reserve_exhibit[key] = pd.concat(frames, axis=1)
+            self.reserve_exhibit[key] = reduce(
+                lambda left, right: pd.merge(left, right, on="Year", how="outer"),
+                frames,
+            )
             st.write(self.reserve_exhibit[key], hide_index=True)
 
         return self.reserve_exhibit
