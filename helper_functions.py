@@ -56,27 +56,6 @@ def _json_safe(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def convert_triangle_to_df(triangle: cl.Triangle) -> pd.DataFrame:
-    """Convert a ``chainladder.Triangle`` to a DataFrame with a ``Year`` column.
-
-    Parameters
-    ----------
-    triangle:
-        Single column ``chainladder.Triangle`` to convert.
-
-    Returns
-    -------
-    pd.DataFrame
-        ``triangle`` converted to a DataFrame with the index reset, the first
-        column renamed to ``Year`` and coerced to an annual ``PeriodIndex``.
-    """
-
-    df = triangle.to_frame().reset_index()
-    df.rename(columns={df.columns[0]: "Year"}, inplace=True)
-    df["Year"] = pd.PeriodIndex(df["Year"], freq="Y")
-    return df
-
-
 def custom_aggrid(df: pd.DataFrame, index_label: Optional[str] = None) -> dict:
     """Display ``df`` using AG Grid with numeric formatting.
 
@@ -192,8 +171,9 @@ class ReservingAppTriangle:
             cumulative=cumulative,
         )
 
-        # Split into DataFrame and Triangle representations for each subgroup
-        self.triangle_dfs, self.triangle_ata_dfs = self.extract_triangle_dfs()
+        # Split into DataFrame representations for each subgroup
+        self.triangle_dfs = self.extract_triangle_dfs()
+        self.triangle_ata_dfs: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
 
         # Compute development factor exhibits for each subgroup
         self.get_dev_factor_exhibit()
@@ -225,6 +205,33 @@ class ReservingAppTriangle:
         )
         return self.triangle
 
+    def convert_triangle_to_df(
+        self, triangle: cl.Triangle, index_name: str = "Year"
+    ) -> pd.DataFrame:
+        """Convert a ``chainladder.Triangle`` to a DataFrame with a named index column.
+
+        Parameters
+        ----------
+        triangle:
+            Single column ``chainladder.Triangle`` to convert.
+        index_name:
+            Name to assign to the first column after the index is reset. If
+            ``index_name`` is ``"Year"`` (case insensitive) the column is
+            coerced to an annual ``PeriodIndex``.
+
+        Returns
+        -------
+        pd.DataFrame
+            ``triangle`` converted to a DataFrame with the index reset and
+            renamed column.
+        """
+
+        df = triangle.to_frame().reset_index()
+        df.rename(columns={df.columns[0]: index_name}, inplace=True)
+        if index_name.lower() == "year":
+            df[index_name] = pd.PeriodIndex(df[index_name], freq="Y")
+        return df
+
     def extract_triangle_dfs(
         self,
     ) -> Dict[Tuple[Optional[str], str], pd.DataFrame]:
@@ -254,7 +261,6 @@ class ReservingAppTriangle:
         value_cols = list(self.triangle.columns)
 
         triangles: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
-        triangle_atas: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
         group_title = None
         if group_cols:
             unique_groups = index_df[group_cols].drop_duplicates()
@@ -266,22 +272,16 @@ class ReservingAppTriangle:
                     f"{col}={val}" for col, val in zip(group_cols, row)
                 )
                 for val_col in value_cols:
-                    triangles[(group_title, val_col)] = convert_triangle_to_df(
-                        sub_tri[val_col]
-                    )
-                    triangle_atas[(group_title, val_col)] = convert_triangle_to_df(
-                        sub_tri[val_col].link_ratio
+                    triangles[(group_title, val_col)] = self.convert_triangle_to_df(
+                        sub_tri[val_col], index_name="Year"
                     )
         else:
             for val_col in value_cols:
-                triangles[(None, val_col)] = convert_triangle_to_df(
-                    self.triangle[val_col]
-                )
-                triangle_atas[(None, val_col)] = convert_triangle_to_df(
-                    self.triangle[val_col].link_ratio
+                triangles[(None, val_col)] = self.convert_triangle_to_df(
+                    self.triangle[val_col], index_name="Year"
                 )
 
-        return triangles, triangle_atas
+        return triangles
 
     def extract_triangles(
         self,
@@ -340,10 +340,14 @@ class ReservingAppTriangle:
             raise ValueError("No triangle available. Call create_triangle first.")
 
         self.triangles = self.extract_triangles()
+        self.triangle_ata_dfs: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
         self.ldf_exhibit: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
         self.cdf_exhibit: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
 
         for key, tri in self.triangles.items():
+            self.triangle_ata_dfs[key] = self.convert_triangle_to_df(
+                tri.ata, index_name="Development"
+            )
             dev_vol = cl.Development().fit(tri)
             dev_simp = cl.Development(average="simple").fit(tri)
 
