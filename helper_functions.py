@@ -1,5 +1,6 @@
 import chainladder as cl
 import pandas as pd
+from functools import reduce
 from typing import Dict, List, Optional, Tuple
 import streamlit as st
 from pandas.api.types import (
@@ -8,7 +9,11 @@ from pandas.api.types import (
     is_integer_dtype,
     is_string_dtype,
 )
-from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+
+try:  # st_aggrid is optional
+    from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+except Exception:  # pragma: no cover
+    AgGrid = GridOptionsBuilder = JsCode = None
 
 
 def _coerce_year_column(df: pd.DataFrame, colname: str = "Year") -> pd.DataFrame:
@@ -41,72 +46,25 @@ def _coerce_year_column(df: pd.DataFrame, colname: str = "Year") -> pd.DataFrame
     return df
 
 
-def _json_safe(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    AgGrid sends data as JSON; JSON can't contain NaN/Infinity/<NA>.
-    Convert all missing to None and avoid NumPy scalars that serialize to NaN.
-    """
-    df = df.copy()
-    # Convert pandas NA/NaN to None
-    df = df.where(df.notna(), None)
-    # Make sure nullable integers don’t re-emit NaN; cast each column to Python objects
-    for c in df.columns:
-        if pd.api.types.is_integer_dtype(df[c]) and str(df[c].dtype).startswith("Int"):
-            df[c] = df[c].astype(object)  # keeps None for missing
-    return df
-
-
-def custom_aggrid(df: pd.DataFrame, index_label: Optional[str] = None) -> dict:
+def custom_aggrid(df: pd.DataFrame) -> dict:
     """Display ``df`` using AG Grid with numeric formatting.
 
-    The index is rendered as standard columns so that it appears in the grid
-    output.  All column labels are coerced to strings to avoid JavaScript
-    errors when numeric column names are encountered.
-
-    Numeric columns are formatted depending on whether their absolute maximum
-    value exceeds 999. Values greater than this threshold are shown with a
-    thousands separator and no decimals. Otherwise values are displayed with
-    two decimal places. Sorting remains based on the underlying numeric value
-    via ``valueFormatter`` JavaScript functions.
-
-    Parameters
-    ----------
-    df:
-        DataFrame to render.
-    index_label:
-        Optional name to use for the index column once rendered.  When
-        provided, this replaces the existing index name after reset.
-
-    Returns
-    -------
-    dict
-        Response returned by :func:`st_aggrid.AgGrid`.
+    If ``st_aggrid`` is unavailable the data is rendered using
+    :func:`custom_st_dataframe` to avoid runtime errors.
     """
 
-    # Display the index as regular columns and ensure all column labels are
-    # strings so that AG Grid's internal string operations do not fail on
-    # numeric names.
+    if GridOptionsBuilder is None:
+        custom_st_dataframe(df)
+        return {}
+
     index_levels = df.index.nlevels
     df.columns = df.columns.map(str)
 
-    if index_label == "Year":
-        df = df.reset_index()
-        df.rename(columns={df.columns[0]: index_label}, inplace=True)
-        df["Year"] = pd.PeriodIndex(df["Year"], freq="Y")
-
-    df = _coerce_year_column(df, index_label)
-    df = _json_safe(df)
     gb = GridOptionsBuilder.from_dataframe(df)
-
-    # Make columns resizable & allow wrapping if needed
     gb.configure_default_column(resizable=True, wrapText=True, autoHeight=True)
-
-    # Let the grid grow to content height and avoid horizontal scroll
     gb.configure_grid_options(domLayout="autoHeight", suppressHorizontalScroll=True)
 
     numeric_cols = df.select_dtypes(include="number").columns
-    # Exclude index columns from numeric formatting to preserve values like
-    # "1990" without thousands separators.
     index_cols = df.columns[:index_levels]
     numeric_cols = [col for col in numeric_cols if col not in index_cols]
     for col in numeric_cols:
@@ -124,15 +82,12 @@ def custom_aggrid(df: pd.DataFrame, index_label: Optional[str] = None) -> dict:
         gb.configure_column(col, type=["numericColumn"], valueFormatter=formatter)
 
     grid_options = gb.build()
-    # Autosize to content, then fit to container, and keep responsive
     grid_options["onFirstDataRendered"] = JsCode(
         """
         function(params) {
           let allColumnIds = [];
           params.columnApi.getAllColumns().forEach(c => allColumnIds.push(c.getId()));
-          // 1) Measure real content widths
           params.columnApi.autoSizeColumns(allColumnIds, false);
-          // 2) Then fill the remaining viewport neatly
           params.api.sizeColumnsToFit();
         }
     """
@@ -145,6 +100,48 @@ def custom_aggrid(df: pd.DataFrame, index_label: Optional[str] = None) -> dict:
     """
     )
     return AgGrid(df, gridOptions=grid_options, allow_unsafe_jscode=True)
+
+
+def custom_st_dataframe(df: pd.DataFrame) -> None:
+    """Display ``df`` with numeric formatting via ``st.dataframe``.
+
+    Numeric columns are formatted based on their absolute maximum values. When
+    the maximum exceeds ``999`` they are rendered with a thousands separator and
+    no decimals; otherwise two decimal places are shown.  Sorting remains
+    numeric because the underlying column dtypes are preserved and formatting is
+    handled through ``column_config``.
+    """
+
+    index_levels = df.index.nlevels
+    df = df.copy()
+    df.columns = df.columns.map(str)
+
+    index_cols = list(df.columns[:index_levels])
+    numeric_cols: list[str] = []
+
+    # Coerce any column that can be interpreted numerically (even if its dtype
+    # is ``object`` due to ``None``/``pd.NA``) so ``st.column_config`` receives
+    # clean ``float`` data. Columns that are entirely non-numeric remain
+    # untouched and won't receive a numeric formatter.
+    for col in df.columns:
+        if col in index_cols:
+            continue
+        converted = pd.to_numeric(df[col], errors="coerce")
+        if converted.notna().any():
+            df[col] = converted
+            numeric_cols.append(col)
+
+    # Ensure numeric columns are float so missing values (None/pd.NA) don't
+    # trigger formatting errors when passed through ``st.column_config``.
+    df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors="coerce")
+
+    column_config: dict[str, st.column_config.NumberColumn] = {}
+    for col in numeric_cols:
+        max_val = df[col].abs().max()
+        fmt = "localized" if max_val > 999 else "%.2f"
+        column_config[col] = st.column_config.NumberColumn(format=fmt)
+
+    st.dataframe(df, hide_index=True, column_config=column_config)
 
 
 class ReservingAppTriangle:
@@ -176,11 +173,12 @@ class ReservingAppTriangle:
             cumulative=cumulative,
         )
 
-        # Split into DataFrame and Triangle representations for each subgroup
+        # Split into DataFrame representations for each subgroup
         self.triangle_dfs = self.extract_triangle_dfs()
+        self.triangle_ata_dfs: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
 
         # Compute development factor exhibits for each subgroup
-        self.get_dev_factor_exhibit()
+        self.get_dev_factor_exhibit(methods=["volume", "simple"])
 
     def create_triangle(
         self,
@@ -208,6 +206,62 @@ class ReservingAppTriangle:
             cumulative=cumulative,
         )
         return self.triangle
+
+    def convert_triangle_to_df(
+        self, triangle: cl.Triangle, index_name: str = "Year"
+    ) -> pd.DataFrame:
+        """Convert a ``chainladder.Triangle`` to a DataFrame with a named index column.
+
+        Parameters
+        ----------
+        triangle:
+            Single column ``chainladder.Triangle`` to convert.
+        index_name:
+            Name to assign to the first column after the index is reset. If
+            ``index_name`` is ``"Year"`` (case insensitive) the column is
+            coerced to an annual ``PeriodIndex``.
+
+        Returns
+        -------
+        pd.DataFrame
+            ``triangle`` converted to a DataFrame with the index reset and
+            renamed column.
+        """
+
+        df = triangle.to_frame().reset_index()
+        df.rename(columns={df.columns[0]: index_name}, inplace=True)
+        if index_name.lower() == "year":
+            df[index_name] = pd.PeriodIndex(df[index_name], freq="Y")
+        return df
+
+    def convert_and_label_triangle(
+        self,
+        triangle: cl.Triangle,
+        value_name: str,
+        index_name: str = "Year",
+    ) -> pd.DataFrame:
+        """Convert ``triangle`` to a two-column DataFrame with a named value.
+
+        Parameters
+        ----------
+        triangle:
+            Single column ``chainladder.Triangle`` to convert.
+        value_name:
+            Name to assign to the value column.
+        index_name:
+            Name to assign to the first column after the index is reset.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame containing the index column and the renamed value column.
+        """
+
+        df = self.convert_triangle_to_df(triangle=triangle, index_name=index_name)
+        if df.shape[1] >= 2:
+            df = df.iloc[:, :2]
+            df.rename(columns={df.columns[1]: value_name}, inplace=True)
+        return df
 
     def extract_triangle_dfs(
         self,
@@ -238,6 +292,7 @@ class ReservingAppTriangle:
         value_cols = list(self.triangle.columns)
 
         triangles: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
+        group_title = None
         if group_cols:
             unique_groups = index_df[group_cols].drop_duplicates()
             for row in unique_groups.itertuples(index=False, name=None):
@@ -248,10 +303,15 @@ class ReservingAppTriangle:
                     f"{col}={val}" for col, val in zip(group_cols, row)
                 )
                 for val_col in value_cols:
-                    triangles[(group_title, val_col)] = sub_tri[val_col].to_frame()
+                    triangles[(group_title, val_col)] = self.convert_triangle_to_df(
+                        sub_tri[val_col], index_name="Year"
+                    )
         else:
             for val_col in value_cols:
-                triangles[(None, val_col)] = self.triangle[val_col].to_frame()
+                triangles[(None, val_col)] = self.convert_triangle_to_df(
+                    self.triangle[val_col], index_name="Year"
+                )
+
         return triangles
 
     def extract_triangles(
@@ -296,62 +356,148 @@ class ReservingAppTriangle:
                 triangles[(None, val_col)] = self.triangle[val_col]
         return triangles
 
-    def get_dev_factor_exhibit(self) -> None:
+    def get_dev_factor_exhibit(self, methods: Optional[List[str]] = None) -> None:
         """Generate LDF and CDF exhibits for each subgroup.
 
-        This method fits both volume weighted and simple average development
-        models to every triangle produced by :meth:`extract_triangles`.  The
-        resulting LDF and CDF tables are stored on ``ldf_exhibit`` and
-        ``cdf_exhibit`` dictionaries keyed by ``(group_title, value_col)``.
-        The underlying ``chainladder.Triangle`` objects are also stored on the
-        ``triangles`` attribute for easy access when rendering link ratios.
+        This method fits development models using the averaging methods
+        provided in ``methods`` to every triangle produced by
+        :meth:`extract_triangles`. The resulting LDF and CDF tables are stored
+        on ``ldf_exhibit`` and ``cdf_exhibit`` dictionaries keyed by
+        ``(group_title, value_col)``. The underlying ``chainladder.Triangle``
+        objects are also stored on the ``triangles`` attribute for easy access
+        when rendering link ratios.
+
+        Parameters
+        ----------
+        methods:
+            List of development averaging methods to apply. Defaults to
+            ``["volume", "simple"]``.
         """
 
         if self.triangle is None:
             raise ValueError("No triangle available. Call create_triangle first.")
 
+        methods = methods or ["volume", "simple"]
+
         self.triangles = self.extract_triangles()
+        self.triangle_ata_dfs: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
         self.ldf_exhibit: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
         self.cdf_exhibit: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
 
+        labels = {"volume": "Volume Weighted", "simple": "Simple Average"}
+
         for key, tri in self.triangles.items():
-            dev_vol = cl.Development().fit(tri)
-            dev_simp = cl.Development(average="simple").fit(tri)
+            self.triangle_ata_dfs[key] = self.convert_triangle_to_df(
+                tri.age_to_age, index_name="Year"
+            )
+            ldf_dfs: List[pd.DataFrame] = []
+            cdf_dfs: List[pd.DataFrame] = []
+            for method in methods:
+                dev = (
+                    cl.Development().fit(tri)
+                    if method == "volume"
+                    else cl.Development(average=method).fit(tri)
+                )
+                label = labels.get(method, method.title())
+                for attr, dfs in [("ldf_", ldf_dfs), ("cdf_", cdf_dfs)]:
+                    df = self.convert_triangle_to_df(
+                        getattr(dev, attr), index_name="Avg Method"
+                    )
+                    df["Avg Method"] = label
+                    dfs.append(df)
+            self.ldf_exhibit[key] = pd.concat(ldf_dfs)
+            self.cdf_exhibit[key] = pd.concat(cdf_dfs)
 
-            ldf_vol = dev_vol.ldf_.to_frame()
-            ldf_vol.index = ["Volume Weighted"]
-            ldf_simp = dev_simp.ldf_.to_frame()
-            ldf_simp.index = ["Simple Average"]
-            self.ldf_exhibit[key] = pd.concat([ldf_vol, ldf_simp])
+    def fit_development_model(
+        self, development_method: str = "chainladder"
+    ) -> Dict[Tuple[Optional[str], str], cl.Pipeline]:
+        """Fit a development model to each triangle and return the results.
 
-            cdf_vol = dev_vol.cdf_.to_frame()
-            cdf_vol.index = ["Volume Weighted"]
-            cdf_simp = dev_simp.cdf_.to_frame()
-            cdf_simp.index = ["Simple Average"]
-            self.cdf_exhibit[key] = pd.concat([cdf_vol, cdf_simp])
+        Parameters
+        ----------
+        development_method:
+            Reserving technique to apply.  Only ``"chainladder"`` is supported
+            at present.
 
-    def fit_development_model(self, development_method: str = "chainladder") -> None:
-        """Fit a development model and store resulting exhibits.
-
-        Currently supports only the deterministic Chainladder method.  For each
-        triangle derived from :meth:`extract_triangles`, a ``Pipeline`` is used
-        to fit the selected development model and the ultimate losses by origin
-        year are captured on the ``reserve_exhibit`` attribute.
+        Returns
+        -------
+        Dict[Tuple[str | None, str], ``cl.Pipeline``]
+            Mapping of ``(group_title, value_col)`` to the fitted model
+            pipelines.
         """
 
         if not hasattr(self, "triangles"):
             self.triangles = self.extract_triangles()
 
-        self.reserve_exhibit: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
+        self.fitted_models: Dict[Tuple[Optional[str], str], cl.Pipeline] = {}
 
         for key, tri in self.triangles.items():
             if development_method.lower() == "chainladder":
                 pipe = cl.Pipeline([("chainladder", cl.Chainladder())]).fit(tri)
-                ultimate_df = pipe["chainladder"].ultimate_.to_frame()
-                if len(ultimate_df.columns) == 1:
-                    ultimate_df.columns = ["Ultimate"]
-                self.reserve_exhibit[key] = ultimate_df
+                self.fitted_models[key] = pipe
             else:
                 raise ValueError(
                     f"Unsupported development method: {development_method}"
                 )
+
+        return self.fitted_models
+
+    def get_reserve_exhibit(
+        self, prem_col: Optional[str] = None
+    ) -> Dict[Tuple[Optional[str], str], pd.DataFrame]:
+        """Return reserve exhibits using previously fitted development models.
+
+        Parameters
+        ----------
+        prem_col:
+            Optional premium column included in ``value_cols``.  When provided,
+            the premium's latest diagonal is added as the first column of the
+            reserve exhibit and separate exhibits for the premium column are
+            omitted.
+        """
+
+        if not hasattr(self, "fitted_models"):
+            raise ValueError(
+                "No fitted models available. Call fit_development_model first."
+            )
+
+        premium_dfs: Dict[Optional[str], pd.DataFrame] = {}
+        if prem_col:
+            for (group_title, val_col), tri in self.triangles.items():
+                if val_col == prem_col:
+                    premium_dfs[group_title] = self.convert_and_label_triangle(
+                        triangle=tri.latest_diagonal,
+                        value_name=prem_col,
+                        index_name="Year",
+                    )
+
+        self.reserve_exhibit: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
+
+        for key, model in self.fitted_models.items():
+            group_title, val_col = key
+            if val_col == prem_col:
+                continue
+
+            tri = self.triangles[key]
+
+            ultimate_df = self.convert_and_label_triangle(
+                triangle=model["chainladder"].ultimate_,
+                value_name="Chainladder Ultimate",
+                index_name="Year",
+            )
+
+            latest_df = self.convert_and_label_triangle(
+                triangle=tri.latest_diagonal,
+                value_name=val_col,
+                index_name="Year",
+            )
+
+            premium_df = premium_dfs.get(group_title)
+
+            frames = [f for f in [premium_df, latest_df, ultimate_df] if f is not None]
+            self.reserve_exhibit[key] = reduce(
+                lambda left, right: pd.merge(left, right, on="Year", how="outer"),
+                frames,
+            )
+
+        return self.reserve_exhibit
