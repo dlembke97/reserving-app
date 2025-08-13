@@ -88,20 +88,20 @@ def main() -> None:
             with value_tab:
                 custom_aggrid(tri)
             with ata_tab:
-                custom_aggrid(tri.link_ratio.to_frame())
+                # custom_aggrid(tri.link_ratio.to_frame())
                 st.markdown("**LDFs**")
-                custom_aggrid(
-                    utils.ldf_exhibit[(group_title, val_col)],
-                )
+                # custom_aggrid(
+                #     utils.ldf_exhibit[(group_title, val_col)],
+                # )
                 st.markdown("**CDFs**")
-                custom_aggrid(
-                    utils.cdf_exhibit[(group_title, val_col)],
-                )
+                # custom_aggrid(
+                #     utils.cdf_exhibit[(group_title, val_col)],
+                # )
             with reserve_tab:
                 st.markdown("**Reserve Exhibit**")
-                custom_aggrid(
-                    utils.reserve_exhibit[(group_title, val_col)], index_label="Year"
-                )
+                # custom_aggrid(
+                #     utils.reserve_exhibit[(group_title, val_col)], index_label="Year"
+                # )
         st.write("---")
 
 

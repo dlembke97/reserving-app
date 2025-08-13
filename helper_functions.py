@@ -193,7 +193,7 @@ class ReservingAppTriangle:
         )
 
         # Split into DataFrame and Triangle representations for each subgroup
-        self.triangle_dfs = self.extract_triangle_dfs()
+        self.triangle_dfs, self.triangle_ata_dfs = self.extract_triangle_dfs()
 
         # Compute development factor exhibits for each subgroup
         self.get_dev_factor_exhibit()
@@ -254,6 +254,8 @@ class ReservingAppTriangle:
         value_cols = list(self.triangle.columns)
 
         triangles: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
+        triangle_atas: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
+        group_title = None
         if group_cols:
             unique_groups = index_df[group_cols].drop_duplicates()
             for row in unique_groups.itertuples(index=False, name=None):
@@ -267,13 +269,19 @@ class ReservingAppTriangle:
                     triangles[(group_title, val_col)] = convert_triangle_to_df(
                         sub_tri[val_col]
                     )
+                    triangle_atas[(group_title, val_col)] = convert_triangle_to_df(
+                        sub_tri[val_col].link_ratio
+                    )
         else:
             for val_col in value_cols:
                 triangles[(None, val_col)] = convert_triangle_to_df(
                     self.triangle[val_col]
                 )
+                triangle_atas[(None, val_col)] = convert_triangle_to_df(
+                    sub_tri[val_col].link_ratio
+                )
 
-        return triangles
+        return triangles, triangle_atas
 
     def extract_triangles(
         self,
