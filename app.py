@@ -100,9 +100,7 @@ def main() -> None:
                 custom_aggrid(utils.cdf_exhibit[(group_title, val_col)])
             with reserve_tab:
                 st.markdown("**Reserve Exhibit**")
-                custom_aggrid(
-                    utils.reserve_exhibit[(group_title, val_col)], index_label="Year"
-                )
+                custom_aggrid(utils.reserve_exhibit[(group_title, val_col)])
         st.write("---")
 
 

@@ -56,7 +56,7 @@ def _json_safe(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def custom_aggrid(df: pd.DataFrame, index_label: Optional[str] = None) -> dict:
+def custom_aggrid(df: pd.DataFrame) -> dict:
     """Display ``df`` using AG Grid with numeric formatting.
 
     The index is rendered as standard columns so that it appears in the grid
@@ -105,6 +105,7 @@ def custom_aggrid(df: pd.DataFrame, index_label: Optional[str] = None) -> dict:
     numeric_cols = [col for col in numeric_cols if col not in index_cols]
     for col in numeric_cols:
         max_val = df[col].abs().max()
+        st.write(max_val)
         if max_val > 999:
             formatter = JsCode(
                 "function(params) {return Number(params.value).toLocaleString('en-US', "
