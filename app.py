@@ -68,10 +68,10 @@ def main() -> None:
     grouped: dict[str | None, dict[str, dict[str, pd.DataFrame]]] = {}
     for key, tri_df in triangles_dfs.items():
         group_title, val_col = key
-        grouped.setdefault(group_title, {}).setdefault(val_col, {})['values'] = tri_df
+        grouped.setdefault(group_title, {}).setdefault(val_col, {})["values"] = tri_df
     for key, ata_df in triangles_ata_dfs.items():
         group_title, val_col = key
-        grouped.setdefault(group_title, {}).setdefault(val_col, {})['ata'] = ata_df
+        grouped.setdefault(group_title, {}).setdefault(val_col, {})["ata"] = ata_df
 
     for group_title, val_map in grouped.items():
         if group_title is not None:
@@ -86,20 +86,22 @@ def main() -> None:
                 st.subheader(val_col)
             else:
                 st.markdown(f"**{val_col}**")
-            value_tab, ata_tab, reserve_tab = st.tabs(["Values", "ATA", "Reserve Exhibit"])
+            value_tab, ata_tab, reserve_tab = st.tabs(
+                ["Values", "ATA", "Reserve Exhibit"]
+            )
             with value_tab:
-                custom_aggrid(tri_map.get('values', pd.DataFrame()))
+                custom_aggrid(tri_map.get("values", pd.DataFrame()))
             with ata_tab:
-                custom_aggrid(tri_map.get('ata', pd.DataFrame()))
+                custom_aggrid(tri_map.get("ata", pd.DataFrame()))
                 st.markdown("**LDFs**")
                 custom_aggrid(utils.ldf_exhibit[(group_title, val_col)])
                 st.markdown("**CDFs**")
                 custom_aggrid(utils.cdf_exhibit[(group_title, val_col)])
             with reserve_tab:
                 st.markdown("**Reserve Exhibit**")
-                custom_aggrid(
-                    utils.reserve_exhibit[(group_title, val_col)], index_label="Year"
-                )
+                # custom_aggrid(
+                #     utils.reserve_exhibit[(group_title, val_col)], index_label="Year"
+                # )
         st.write("---")
 
 

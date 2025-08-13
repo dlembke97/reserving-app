@@ -278,7 +278,7 @@ class ReservingAppTriangle:
                     self.triangle[val_col]
                 )
                 triangle_atas[(None, val_col)] = convert_triangle_to_df(
-                    sub_tri[val_col].link_ratio
+                    self.triangle[val_col].link_ratio
                 )
 
         return triangles, triangle_atas
@@ -348,15 +348,15 @@ class ReservingAppTriangle:
             dev_simp = cl.Development(average="simple").fit(tri)
 
             ldf_vol = dev_vol.ldf_.to_frame()
-            ldf_vol["Avg Method"] = ["Volume Weighted"]
+            ldf_vol.index = ["Volume Weighted"]
             ldf_simp = dev_simp.ldf_.to_frame()
-            ldf_simp["Avg Method"] = ["Simple Average"]
+            ldf_simp.index = ["Simple Average"]
             self.ldf_exhibit[key] = pd.concat([ldf_vol, ldf_simp])
 
             cdf_vol = dev_vol.cdf_.to_frame()
-            cdf_vol["Avg Method"] = ["Volume Weighted"]
+            cdf_vol.index = ["Volume Weighted"]
             cdf_simp = dev_simp.cdf_.to_frame()
-            cdf_simp["Avg Method"] = ["Simple Average"]
+            cdf_simp.index = ["Simple Average"]
             self.cdf_exhibit[key] = pd.concat([cdf_vol, cdf_simp])
 
     def fit_development_model(
