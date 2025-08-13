@@ -9,6 +9,7 @@ from pandas.api.types import (
     is_integer_dtype,
     is_string_dtype,
 )
+
 try:  # st_aggrid is optional
     from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 except Exception:  # pragma: no cover
@@ -137,7 +138,7 @@ def custom_st_dataframe(df: pd.DataFrame) -> None:
     column_config: dict[str, st.column_config.NumberColumn] = {}
     for col in numeric_cols:
         max_val = df[col].abs().max()
-        fmt = "%,.0f" if max_val > 999 else "%,.2f"
+        fmt = "localized" if max_val > 999 else "%.2f"
         column_config[col] = st.column_config.NumberColumn(format=fmt)
 
     st.dataframe(df, hide_index=True, column_config=column_config)
