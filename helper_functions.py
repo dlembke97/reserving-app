@@ -354,17 +354,21 @@ class ReservingAppTriangle:
             ldf_vol_df = self.convert_triangle_to_df(
                 dev_vol.ldf_, index_name="Avg Method"
             )
+            ldf_vol_df["Avg Method"] = "Volume Weighted"
             ldf_simp_df = self.convert_triangle_to_df(
                 dev_simp.ldf_, index_name="Avg Method"
             )
+            ldf_simp_df["Avg Method"] = "Simple Average"
             self.ldf_exhibit[key] = pd.concat([ldf_vol_df, ldf_simp_df])
 
             cdf_vol_df = self.convert_triangle_to_df(
                 dev_vol.cdf_, index_name="Avg Method"
             )
+            cdf_vol_df["Avg Method"] = "Volume Weighted"
             cdf_simp_df = self.convert_triangle_to_df(
                 dev_simp.cdf_, index_name="Avg Method"
             )
+            cdf_simp_df["Avg Method"] = "Simple Average"
             self.cdf_exhibit[key] = pd.concat([cdf_vol_df, cdf_simp_df])
 
     def fit_development_model(
