@@ -57,51 +57,49 @@ def main() -> None:
         cumulative=True,
     )
     utils.fit_development_model(prem_col=prem_col)
-    triangles = utils.triangles
     triangles_dfs = utils.triangle_dfs
+    triangles_ata_dfs = utils.triangle_ata_dfs
 
     # Restructure triangles so that each grouping combination renders its
     # associated value column triangles together rather than as individual
-    # entries.  ``triangles`` is keyed by ``(group_title, value_col)``; group
-    # them by ``group_title`` first, then iterate the value columns within
-    # each group.
-    grouped: dict[str | None, dict[str, cl.Triangle]] = {}
-    for (group_title, val_col), tri in triangles_dfs.items():
-        grouped.setdefault(group_title, {})[val_col] = tri
+    # entries. ``triangles_dfs`` and ``triangles_ata_dfs`` are keyed by
+    # ``(group_title, value_col)``; group them by ``group_title`` first and
+    # attach both value and ATA DataFrames so they can be displayed together.
+    grouped: dict[str | None, dict[str, dict[str, pd.DataFrame]]] = {}
+    for key, tri_df in triangles_dfs.items():
+        group_title, val_col = key
+        grouped.setdefault(group_title, {}).setdefault(val_col, {})['values'] = tri_df
+    for key, ata_df in triangles_ata_dfs.items():
+        group_title, val_col = key
+        grouped.setdefault(group_title, {}).setdefault(val_col, {})['ata'] = ata_df
 
     for group_title, val_map in grouped.items():
         if group_title is not None:
             st.subheader(group_title)
-        for val_col, tri in val_map.items():
+        for val_col, tri_map in val_map.items():
             if val_col == prem_col:
                 continue
             # When no grouping columns are supplied, the value column itself
-            # should serve as the subheader.  Otherwise, display the value
+            # should serve as the subheader. Otherwise, display the value
             # column as a caption within the group section.
             if group_title is None:
                 st.subheader(val_col)
             else:
                 st.markdown(f"**{val_col}**")
-            value_tab, ata_tab, reserve_tab = st.tabs(
-                ["Values", "ATA", "Reserve Exhibit"]
-            )
+            value_tab, ata_tab, reserve_tab = st.tabs(["Values", "ATA", "Reserve Exhibit"])
             with value_tab:
-                custom_aggrid(tri)
+                custom_aggrid(tri_map.get('values', pd.DataFrame()))
             with ata_tab:
-                # custom_aggrid(tri.link_ratio.to_frame())
+                custom_aggrid(tri_map.get('ata', pd.DataFrame()))
                 st.markdown("**LDFs**")
-                # custom_aggrid(
-                #     utils.ldf_exhibit[(group_title, val_col)],
-                # )
+                custom_aggrid(utils.ldf_exhibit[(group_title, val_col)])
                 st.markdown("**CDFs**")
-                # custom_aggrid(
-                #     utils.cdf_exhibit[(group_title, val_col)],
-                # )
+                custom_aggrid(utils.cdf_exhibit[(group_title, val_col)])
             with reserve_tab:
                 st.markdown("**Reserve Exhibit**")
-                # custom_aggrid(
-                #     utils.reserve_exhibit[(group_title, val_col)], index_label="Year"
-                # )
+                custom_aggrid(
+                    utils.reserve_exhibit[(group_title, val_col)], index_label="Year"
+                )
         st.write("---")
 
 
