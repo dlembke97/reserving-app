@@ -378,62 +378,88 @@ class ReservingAppTriangle:
             self.cdf_exhibit[key] = pd.concat(cdf_dfs)
 
     def fit_development_model(
-        self, development_method: str = "chainladder", prem_col: Optional[str] = None
-    ) -> None:
-        """Fit a development model and store resulting exhibits.
-
-        Currently supports only the deterministic Chainladder method.  For each
-        triangle derived from :meth:`extract_triangles`, a ``Pipeline`` is used
-        to fit the selected development model and the ultimate losses by origin
-        year are captured on the ``reserve_exhibit`` attribute.
+        self, development_method: str = "chainladder"
+    ) -> Dict[Tuple[Optional[str], str], cl.Pipeline]:
+        """Fit a development model to each triangle and return the results.
 
         Parameters
         ----------
         development_method:
             Reserving technique to apply.  Only ``"chainladder"`` is supported
             at present.
-        prem_col:
-            Optional premium column included in ``value_cols``.  When provided,
-            the premium's latest diagonal is added as the second column of the
-            reserve exhibit and separate exhibits for the premium column are
-            omitted.
+
+        Returns
+        -------
+        Dict[Tuple[str | None, str], ``cl.Pipeline``]
+            Mapping of ``(group_title, value_col)`` to the fitted model
+            pipelines.
         """
 
         if not hasattr(self, "triangles"):
             self.triangles = self.extract_triangles()
 
-        self.reserve_exhibit: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
+        self.fitted_models: Dict[Tuple[Optional[str], str], cl.Pipeline] = {}
 
         for key, tri in self.triangles.items():
-            group_title, val_col = key
-            if val_col == prem_col:
-                continue
-
             if development_method.lower() == "chainladder":
                 pipe = cl.Pipeline([("chainladder", cl.Chainladder())]).fit(tri)
-                ultimate_df = self.convert_triangle_to_df(
-                    triangle=pipe["chainladder"].ultimate_, index_name="Year"
-                )
-                if len(ultimate_df.columns) == 1:
-                    ultimate_df.columns = ["Chainladder Ultimate"]
-
-                premium_df = None
-                if prem_col and (group_title, prem_col) in self.triangles:
-                    premium_df = self.convert_triangle_to_df(
-                        triangle=self.triangles[
-                            (group_title, prem_col)
-                        ].latest_diagonal,
-                        index_name="Year",
-                    )
-                latest_df = self.convert_triangle_to_df(
-                    tri.latest_diagonal[val_col],
-                    index_name="Year",
-                )
-                frames = [
-                    f for f in [premium_df, latest_df, ultimate_df] if f is not None
-                ]
-                self.reserve_exhibit[key] = pd.concat(frames, axis=1)
+                self.fitted_models[key] = pipe
             else:
                 raise ValueError(
                     f"Unsupported development method: {development_method}"
                 )
+
+        return self.fitted_models
+
+    def get_reserve_exhibit(
+        self, prem_col: Optional[str] = None
+    ) -> Dict[Tuple[Optional[str], str], pd.DataFrame]:
+        """Return reserve exhibits using previously fitted development models.
+
+        Parameters
+        ----------
+        prem_col:
+            Optional premium column included in ``value_cols``.  When provided,
+            the premium's latest diagonal is added as the first column of the
+            reserve exhibit and separate exhibits for the premium column are
+            omitted.
+        """
+
+        if not hasattr(self, "fitted_models"):
+            raise ValueError(
+                "No fitted models available. Call fit_development_model first."
+            )
+
+        premium_dfs: Dict[Optional[str], pd.DataFrame] = {}
+        if prem_col:
+            for (group_title, val_col), tri in self.triangles.items():
+                if val_col == prem_col:
+                    premium_dfs[group_title] = self.convert_triangle_to_df(
+                        triangle=tri.latest_diagonal, index_name="Year"
+                    )
+
+        self.reserve_exhibit: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
+
+        for key, model in self.fitted_models.items():
+            group_title, val_col = key
+            if val_col == prem_col:
+                continue
+
+            tri = self.triangles[key]
+
+            ultimate_df = self.convert_triangle_to_df(
+                triangle=model["chainladder"].ultimate_, index_name="Year"
+            )
+            if len(ultimate_df.columns) == 1:
+                ultimate_df.columns = ["Chainladder Ultimate"]
+
+            latest_df = self.convert_triangle_to_df(
+                triangle=tri.latest_diagonal, index_name="Year"
+            )
+
+            premium_df = premium_dfs.get(group_title)
+
+            frames = [f for f in [premium_df, latest_df, ultimate_df] if f is not None]
+            self.reserve_exhibit[key] = pd.concat(frames, axis=1)
+
+        return self.reserve_exhibit
