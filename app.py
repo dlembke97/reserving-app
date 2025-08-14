@@ -56,7 +56,9 @@ def main() -> None:
         group_cols=group_cols,
         cumulative=True,
     )
-    utils.fit_development_model()
+    utils.fit_development_model("chainladder")
+    if prem_col:
+        utils.fit_development_model("cape_cod", prem_col=prem_col)
     utils.get_reserve_exhibit(prem_col=prem_col)
     triangles_dfs = utils.triangle_dfs
     triangles_ata_dfs = utils.triangle_ata_dfs

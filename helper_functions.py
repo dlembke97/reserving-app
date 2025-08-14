@@ -409,39 +409,85 @@ class ReservingAppTriangle:
             self.ldf_exhibit[key] = pd.concat(ldf_dfs)
             self.cdf_exhibit[key] = pd.concat(cdf_dfs)
 
-    def fit_development_model(
-        self, development_method: str = "chainladder"
-    ) -> Dict[Tuple[Optional[str], str], cl.Pipeline]:
-        """Fit a development model to each triangle and return the results.
+    def get_development_model(
+        self, development_method: str, prem_col: Optional[str] = None
+    ) -> Dict[Tuple[Optional[str], str], Dict[str, cl.Pipeline]]:
+        """Fit ``development_method`` to each triangle and store the results.
 
         Parameters
         ----------
         development_method:
-            Reserving technique to apply.  Only ``"chainladder"`` is supported
-            at present.
+            Reserving technique to apply. Supported methods are
+            ``"chainladder"`` and ``"cape_cod"``.
+        prem_col:
+            Premium column used as the ``sample_weight`` when fitting the Cape
+            Cod method.  Required when ``development_method`` is
+            ``"cape_cod"``.
 
         Returns
         -------
-        Dict[Tuple[str | None, str], ``cl.Pipeline``]
-            Mapping of ``(group_title, value_col)`` to the fitted model
-            pipelines.
+        Dict[Tuple[str | None, str], dict[str, ``cl.Pipeline``]]
+            Mapping of ``(group_title, value_col)`` to dictionaries of fitted
+            model pipelines keyed by development method.
         """
 
         if not hasattr(self, "triangles"):
             self.triangles = self.extract_triangles()
 
-        self.fitted_models: Dict[Tuple[Optional[str], str], cl.Pipeline] = {}
+        if not hasattr(self, "fitted_models"):
+            self.fitted_models: Dict[
+                Tuple[Optional[str], str], Dict[str, cl.Pipeline]
+            ] = {}
+
+        method = development_method.lower()
 
         for key, tri in self.triangles.items():
-            if development_method.lower() == "chainladder":
+            if method == "chainladder":
                 pipe = cl.Pipeline([("chainladder", cl.Chainladder())]).fit(tri)
-                self.fitted_models[key] = pipe
-            else:
-                raise ValueError(
-                    f"Unsupported development method: {development_method}"
+            elif method == "cape_cod":
+                if prem_col is None:
+                    raise ValueError(
+                        "prem_col is required for the Cape Cod development method"
+                    )
+                group_title, _ = key
+                prem_tri = self.triangles.get((group_title, prem_col))
+                if prem_tri is None:
+                    raise ValueError(
+                        f"No premium triangle available for group {group_title}"
+                    )
+                pipe = cl.Pipeline([("cape_cod", cl.CapeCod())]).fit(
+                    tri, sample_weight=prem_tri.latest_diagonal
                 )
+            else:
+                raise ValueError(f"Unsupported development method: {method}")
+
+            self.fitted_models.setdefault(key, {})[method] = pipe
 
         return self.fitted_models
+
+    # Backwards compatibility
+    def fit_development_model(
+        self, development_method: str, prem_col: Optional[str] = None
+    ) -> Dict[Tuple[Optional[str], str], Dict[str, cl.Pipeline]]:
+        """Fit ``development_method`` and track the method order.
+
+        This thin wrapper preserves backwards compatibility for callers using
+        the old ``fit_`` name while also recording the sequence of development
+        methods that have been applied.  The stored order is later used by
+        :meth:`get_reserve_exhibit` to render Ultimate columns for all fitted
+        models without hard-coding specific method names.
+        """
+
+        method = development_method.lower()
+
+        # Track the order in which development methods are requested so reserve
+        # exhibits can render Ultimate columns consistently.
+        fitted_order = getattr(self, "fitted_method_order", [])
+        if method not in fitted_order:
+            fitted_order.append(method)
+        self.fitted_method_order = fitted_order
+
+        return self.get_development_model(development_method, prem_col=prem_col)
 
     def get_reserve_exhibit(
         self, prem_col: Optional[str] = None
@@ -459,7 +505,7 @@ class ReservingAppTriangle:
 
         if not hasattr(self, "fitted_models"):
             raise ValueError(
-                "No fitted models available. Call fit_development_model first."
+                "No fitted models available. Call get_development_model first."
             )
 
         premium_dfs: Dict[Optional[str], pd.DataFrame] = {}
@@ -474,18 +520,29 @@ class ReservingAppTriangle:
 
         self.reserve_exhibit: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
 
-        for key, model in self.fitted_models.items():
+        methods_in_order = getattr(self, "fitted_method_order", [])
+
+        for key, model_map in self.fitted_models.items():
             group_title, val_col = key
             if val_col == prem_col:
                 continue
 
             tri = self.triangles[key]
 
-            ultimate_df = self.convert_and_label_triangle(
-                triangle=model["chainladder"].ultimate_,
-                value_name="Chainladder Ultimate",
-                index_name="Year",
-            )
+            ultimate_dfs: List[pd.DataFrame] = []
+            for method in methods_in_order:
+                pipe = model_map.get(method)
+                if pipe is None:
+                    continue
+                estimator = pipe[method]
+                colname = f"{method.replace('_', ' ').title()} Ultimate"
+                ultimate_dfs.append(
+                    self.convert_and_label_triangle(
+                        triangle=estimator.ultimate_,
+                        value_name=colname,
+                        index_name="Year",
+                    )
+                )
 
             latest_df = self.convert_and_label_triangle(
                 triangle=tri.latest_diagonal,
@@ -495,7 +552,7 @@ class ReservingAppTriangle:
 
             premium_df = premium_dfs.get(group_title)
 
-            frames = [f for f in [premium_df, latest_df, ultimate_df] if f is not None]
+            frames = [f for f in [premium_df, latest_df] + ultimate_dfs if f is not None]
             self.reserve_exhibit[key] = reduce(
                 lambda left, right: pd.merge(left, right, on="Year", how="outer"),
                 frames,
