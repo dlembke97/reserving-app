@@ -3,12 +3,19 @@ import pandas as pd
 from functools import reduce
 from typing import Dict, List, Optional, Tuple
 import streamlit as st
+import pickle
+import tempfile
 from pandas.api.types import (
     is_period_dtype,
     is_datetime64_any_dtype,
     is_integer_dtype,
     is_string_dtype,
 )
+
+try:  # optional MLflow tracking
+    import mlflow
+except Exception:  # pragma: no cover
+    mlflow = None
 
 try:  # st_aggrid is optional
     from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
@@ -409,8 +416,36 @@ class ReservingAppTriangle:
             self.ldf_exhibit[key] = pd.concat(ldf_dfs)
             self.cdf_exhibit[key] = pd.concat(cdf_dfs)
 
+    def track_development_model(
+        self,
+        pipe: cl.Pipeline,
+        method: str,
+        group_title: Optional[str],
+        val_col: str,
+        experiment_name: str = "Basic Reserving Models",
+    ) -> None:
+        """Log the fitted model to MLflow, if available."""
+
+        if mlflow is None:
+            return
+
+        mlflow.set_experiment(experiment_name)
+        run_name = f"{method}-{group_title or 'total'}-{val_col}"
+        with mlflow.start_run(run_name=run_name, nested=True):
+            mlflow.log_param("development_method", method)
+            if group_title is not None:
+                mlflow.log_param("group_title", group_title)
+            mlflow.log_param("value_column", val_col)
+            with tempfile.NamedTemporaryFile(suffix=".pkl") as tmp:
+                pickle.dump(pipe, tmp)
+                tmp.flush()
+                mlflow.log_artifact(tmp.name, artifact_path="model")
+
     def get_development_model(
-        self, development_method: str, prem_col: Optional[str] = None
+        self,
+        development_method: str,
+        prem_col: Optional[str] = None,
+        experiment_name: str = "Basic Reserving Models",
     ) -> Dict[Tuple[Optional[str], str], Dict[str, cl.Pipeline]]:
         """Fit ``development_method`` to each triangle and store the results.
 
@@ -423,6 +458,8 @@ class ReservingAppTriangle:
             Premium column used as the ``sample_weight`` when fitting the Cape
             Cod method.  Required when ``development_method`` is
             ``"cape_cod"``.
+        experiment_name:
+            Name of the MLflow experiment used when logging models.
 
         Returns
         -------
@@ -463,11 +500,19 @@ class ReservingAppTriangle:
 
             self.fitted_models.setdefault(key, {})[method] = pipe
 
+            group_title, val_col = key
+            self.track_development_model(
+                pipe, method, group_title, val_col, experiment_name=experiment_name
+            )
+
         return self.fitted_models
 
     # Backwards compatibility
     def fit_development_model(
-        self, development_method: str, prem_col: Optional[str] = None
+        self,
+        development_method: str,
+        prem_col: Optional[str] = None,
+        experiment_name: str = "Basic Reserving Models",
     ) -> Dict[Tuple[Optional[str], str], Dict[str, cl.Pipeline]]:
         """Fit ``development_method`` and track the method order.
 
@@ -487,7 +532,11 @@ class ReservingAppTriangle:
             fitted_order.append(method)
         self.fitted_method_order = fitted_order
 
-        return self.get_development_model(development_method, prem_col=prem_col)
+        return self.get_development_model(
+            development_method,
+            prem_col=prem_col,
+            experiment_name=experiment_name,
+        )
 
     def get_reserve_exhibit(
         self, prem_col: Optional[str] = None

@@ -8,6 +8,7 @@ streamlit = "*"
 chainladder = "*"
 colorama = "*"
 streamlit-aggrid = "*"
+mlflow = "*"
 
 [dev-packages]
 
