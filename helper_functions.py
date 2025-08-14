@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Tuple
 import streamlit as st
 import pickle
 import tempfile
+import os
 from pandas.api.types import (
     is_period_dtype,
     is_datetime64_any_dtype,
@@ -436,10 +437,12 @@ class ReservingAppTriangle:
             if group_title is not None:
                 mlflow.log_param("group_title", group_title)
             mlflow.log_param("value_column", val_col)
-            with tempfile.NamedTemporaryFile(suffix=".pkl") as tmp:
+            with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False) as tmp:
                 pickle.dump(pipe, tmp)
                 tmp.flush()
-                mlflow.log_artifact(tmp.name, artifact_path="model")
+                tmp_path = tmp.name
+            mlflow.log_artifact(tmp_path, artifact_path="model")
+            os.remove(tmp_path)
 
     def get_development_model(
         self,
