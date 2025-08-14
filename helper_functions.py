@@ -46,6 +46,7 @@ def _coerce_year_column(df: pd.DataFrame, colname: str = "Year") -> pd.DataFrame
     return df
 
 
+# NOTE currently not working
 def custom_aggrid(df: pd.DataFrame) -> dict:
     """Display ``df`` using AG Grid with numeric formatting.
 
