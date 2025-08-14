@@ -9,6 +9,7 @@ chainladder = "*"
 colorama = "*"
 streamlit-aggrid = "*"
 mlflow = "*"
+waitress = "*"
 
 [dev-packages]
 
