@@ -536,13 +536,13 @@ class ReservingAppTriangle:
                     continue
                 estimator = pipe[method]
                 colname = f"{method.replace('_', ' ').title()} Ultimate"
-                ultimate_dfs.append(
-                    self.convert_and_label_triangle(
-                        triangle=estimator.ultimate_,
-                        value_name=colname,
-                        index_name="Year",
-                    )
+                ultimate_df = self.convert_and_label_triangle(
+                    triangle=estimator.ultimate_,
+                    value_name=colname,
+                    index_name="Year",
                 )
+                ultimate_df[colname] = ultimate_df[colname].round(0)
+                ultimate_dfs.append(ultimate_df)
 
             latest_df = self.convert_and_label_triangle(
                 triangle=tri.latest_diagonal,
@@ -552,7 +552,9 @@ class ReservingAppTriangle:
 
             premium_df = premium_dfs.get(group_title)
 
-            frames = [f for f in [premium_df, latest_df] + ultimate_dfs if f is not None]
+            frames = [
+                f for f in [premium_df, latest_df] + ultimate_dfs if f is not None
+            ]
             self.reserve_exhibit[key] = reduce(
                 lambda left, right: pd.merge(left, right, on="Year", how="outer"),
                 frames,
