@@ -17,7 +17,7 @@ def process_data() -> tuple[pd.DataFrame, list[str], list[str]]:
     cat_cols = [
         col
         for col, dtype in df.dtypes.items()
-        if dtype == "object" and col not in ["origin", "development"]
+        if dtype == "object" and col not in ["origin", "development", "GRNAME"]
     ]
     prem_cols = [col for col in df.columns if "prem" in col.lower()]
     return df, cat_cols, prem_cols
@@ -32,7 +32,7 @@ def render_sidebar(
     selected_values = st.sidebar.multiselect(
         "Value columns", value_options, default=value_options
     )
-    group_cols = st.sidebar.multiselect("Group triangles by", cat_cols)
+    group_cols = st.sidebar.multiselect("Group triangles by", cat_cols, default="LOB")
     prem_col = None
     if prem_cols:
         prem_col = st.sidebar.selectbox("Premium column", prem_cols, index=0)
@@ -56,7 +56,9 @@ def main() -> None:
         group_cols=group_cols,
         cumulative=True,
     )
-    utils.fit_development_model()
+    utils.fit_development_model("chainladder")
+    if prem_col:
+        utils.fit_development_model("cape_cod", prem_col=prem_col)
     utils.get_reserve_exhibit(prem_col=prem_col)
     triangles_dfs = utils.triangle_dfs
     triangles_ata_dfs = utils.triangle_ata_dfs
