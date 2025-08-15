@@ -60,9 +60,7 @@ def main() -> None:
     for key, ldf_dict in st.session_state.get("custom_ldfs", {}).items():
         utils.apply_selected_ldfs(key, pd.Series(ldf_dict))
 
-    utils.fit_development_model(
-        "chainladder", experiment_name="Basic Reserving Models"
-    )
+    utils.fit_development_model("chainladder", experiment_name="Basic Reserving Models")
     if prem_col:
         utils.fit_development_model(
             "cape_cod", prem_col=prem_col, experiment_name="Basic Reserving Models"
@@ -118,6 +116,7 @@ def main() -> None:
                     column_config={
                         "Avg Method": st.column_config.TextColumn(disabled=True)
                     },
+                    hide_index=True,
                 )
                 utils.ldf_exhibit[ldf_key] = edited_ldf_df
                 selected_row = (
@@ -125,7 +124,9 @@ def main() -> None:
                     .iloc[0]
                     .drop("Avg Method")
                 )
-                st.session_state.setdefault("custom_ldfs", {})[ldf_key] = selected_row.to_dict()
+                st.session_state.setdefault("custom_ldfs", {})[
+                    ldf_key
+                ] = selected_row.to_dict()
                 utils.apply_selected_ldfs(ldf_key, selected_row)
                 st.markdown("**CDFs**")
                 custom_st_dataframe(utils.cdf_exhibit[ldf_key])
