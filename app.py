@@ -107,14 +107,17 @@ def main() -> None:
                 st.markdown("**LDFs**")
                 ldf_key = (group_title, val_col)
                 ldf_df = utils.ldf_exhibit[ldf_key]
-                # Disable editing for non-selected rows and Avg Method column
-                disabled = pd.DataFrame(True, index=ldf_df.index, columns=ldf_df.columns)
-                disabled.loc[ldf_df["Avg Method"] == "Selected", :] = False
-                disabled["Avg Method"] = True
+                # Enable editing only for the "Selected" row and keep the
+                # ``Avg Method`` column read-only so users can overwrite the
+                # LDF values.
+                row_disabled = ldf_df["Avg Method"] != "Selected"
                 edited_ldf_df = st.data_editor(
                     ldf_df,
                     key=f"ldf_{group_title}_{val_col}",
-                    disabled=disabled,
+                    disabled=row_disabled,
+                    column_config={
+                        "Avg Method": st.column_config.TextColumn(disabled=True)
+                    },
                 )
                 utils.ldf_exhibit[ldf_key] = edited_ldf_df
                 selected_row = (
