@@ -56,6 +56,10 @@ def main() -> None:
         group_cols=group_cols,
         cumulative=True,
     )
+    # Reapply any user-selected LDFs stored in session state before fitting models
+    for key, ldf_dict in st.session_state.get("custom_ldfs", {}).items():
+        utils.apply_selected_ldfs(key, pd.Series(ldf_dict))
+
     utils.fit_development_model(
         "chainladder", experiment_name="Basic Reserving Models"
     )
@@ -101,9 +105,30 @@ def main() -> None:
             with ata_tab:
                 custom_st_dataframe(tri_map.get("ata", pd.DataFrame()))
                 st.markdown("**LDFs**")
-                custom_st_dataframe(utils.ldf_exhibit[(group_title, val_col)])
+                ldf_key = (group_title, val_col)
+                ldf_df = utils.ldf_exhibit[ldf_key]
+                # Enable editing only for the "Selected" row and keep the
+                # ``Avg Method`` column read-only so users can overwrite the
+                # LDF values.
+                row_disabled = ldf_df["Avg Method"] != "Selected"
+                edited_ldf_df = st.data_editor(
+                    ldf_df,
+                    key=f"ldf_{group_title}_{val_col}",
+                    disabled=row_disabled,
+                    column_config={
+                        "Avg Method": st.column_config.TextColumn(disabled=True)
+                    },
+                )
+                utils.ldf_exhibit[ldf_key] = edited_ldf_df
+                selected_row = (
+                    edited_ldf_df[edited_ldf_df["Avg Method"] == "Selected"]
+                    .iloc[0]
+                    .drop("Avg Method")
+                )
+                st.session_state.setdefault("custom_ldfs", {})[ldf_key] = selected_row.to_dict()
+                utils.apply_selected_ldfs(ldf_key, selected_row)
                 st.markdown("**CDFs**")
-                custom_st_dataframe(utils.cdf_exhibit[(group_title, val_col)])
+                custom_st_dataframe(utils.cdf_exhibit[ldf_key])
             with reserve_tab:
                 st.markdown("**Reserve Exhibit**")
                 custom_st_dataframe(utils.reserve_exhibit[(group_title, val_col)])

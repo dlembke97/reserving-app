@@ -185,6 +185,8 @@ class ReservingAppTriangle:
         # Split into DataFrame representations for each subgroup
         self.triangle_dfs = self.extract_triangle_dfs()
         self.triangle_ata_dfs: Dict[Tuple[Optional[str], str], pd.DataFrame] = {}
+        # Store user selected LDF patterns keyed by (group_title, value_col)
+        self.custom_ldfs: Dict[Tuple[Optional[str], str], Dict[int, float]] = {}
 
         # Compute development factor exhibits for each subgroup
         self.get_dev_factor_exhibit(methods=["volume", "simple"])
@@ -414,8 +416,69 @@ class ReservingAppTriangle:
                     )
                     df["Avg Method"] = label
                     dfs.append(df)
-            self.ldf_exhibit[key] = pd.concat(ldf_dfs)
-            self.cdf_exhibit[key] = pd.concat(cdf_dfs)
+            ldf_df = pd.concat(ldf_dfs)
+            cdf_df = pd.concat(cdf_dfs)
+
+            # Add an editable "Selected" row defaulting to Volume Weighted
+            vol_mask = ldf_df["Avg Method"] == "Volume Weighted"
+            if vol_mask.any():
+                selected_ldf = ldf_df.loc[vol_mask].copy()
+                selected_ldf["Avg Method"] = "Selected"
+                ldf_df = pd.concat([ldf_df, selected_ldf], ignore_index=True)
+
+                selected_cdf = cdf_df.loc[cdf_df["Avg Method"] == "Volume Weighted"].copy()
+                selected_cdf["Avg Method"] = "Selected"
+                cdf_df = pd.concat([cdf_df, selected_cdf], ignore_index=True)
+
+                # Initialize custom LDF patterns for this key based on volume values
+                factors = {
+                    int(col.split("-")[0]): selected_ldf.iloc[0][col]
+                    for col in selected_ldf.columns
+                    if col != "Avg Method"
+                }
+                self.custom_ldfs[key] = factors
+
+            self.ldf_exhibit[key] = ldf_df
+            self.cdf_exhibit[key] = cdf_df
+
+    def apply_selected_ldfs(
+        self,
+        key: Tuple[Optional[str], str],
+        ldf_series: pd.Series,
+    ) -> None:
+        """Update exhibits with user selected LDFs for ``key``.
+
+        Parameters
+        ----------
+        key:
+            Tuple of ``(group_title, value_col)`` identifying the triangle.
+        ldf_series:
+            Series of LDF values indexed by development period labels, e.g.
+            ``"12-24"``.
+        """
+
+        # Normalize the Series to float values and construct pattern dict
+        ldf_series = ldf_series.astype(float)
+        patterns = {int(col.split("-")[0]): val for col, val in ldf_series.items()}
+        self.custom_ldfs[key] = patterns
+
+        # Update LDF exhibit row
+        ldf_df = self.ldf_exhibit[key].copy()
+        mask = ldf_df["Avg Method"] == "Selected"
+        for col, val in ldf_series.items():
+            ldf_df.loc[mask, col] = val
+        self.ldf_exhibit[key] = ldf_df
+
+        # Recompute corresponding CDF row via DevelopmentConstant
+        tri = self.triangles[key]
+        dev = cl.DevelopmentConstant(patterns=patterns).fit(tri)
+        cdf_row = self.convert_triangle_to_df(dev.cdf_, index_name="Avg Method")
+        cdf_row["Avg Method"] = "Selected"
+
+        cdf_df = self.cdf_exhibit[key].copy()
+        cdf_mask = cdf_df["Avg Method"] == "Selected"
+        cdf_df.loc[cdf_mask, cdf_row.columns[1:]] = cdf_row.iloc[0, 1:].values
+        self.cdf_exhibit[key] = cdf_df
 
     def track_development_model(
         self,
@@ -452,6 +515,10 @@ class ReservingAppTriangle:
     ) -> Dict[Tuple[Optional[str], str], Dict[str, cl.Pipeline]]:
         """Fit ``development_method`` to each triangle and store the results.
 
+        User-selected LDFs supplied via :meth:`apply_selected_ldfs` are
+        honored for both methods by inserting a ``DevelopmentConstant`` step
+        when patterns are available.
+
         Parameters
         ----------
         development_method:
@@ -482,8 +549,13 @@ class ReservingAppTriangle:
         method = development_method.lower()
 
         for key, tri in self.triangles.items():
+            patterns = self.custom_ldfs.get(key)
+
             if method == "chainladder":
-                pipe = cl.Pipeline([("chainladder", cl.Chainladder())]).fit(tri)
+                steps = [("chainladder", cl.Chainladder())]
+                if patterns:
+                    steps.insert(0, ("selected", cl.DevelopmentConstant(patterns=patterns)))
+                pipe = cl.Pipeline(steps).fit(tri)
             elif method == "cape_cod":
                 if prem_col is None:
                     raise ValueError(
@@ -495,7 +567,10 @@ class ReservingAppTriangle:
                     raise ValueError(
                         f"No premium triangle available for group {group_title}"
                     )
-                pipe = cl.Pipeline([("cape_cod", cl.CapeCod())]).fit(
+                steps = [("cape_cod", cl.CapeCod())]
+                if patterns:
+                    steps.insert(0, ("selected", cl.DevelopmentConstant(patterns=patterns)))
+                pipe = cl.Pipeline(steps).fit(
                     tri, sample_weight=prem_tri.latest_diagonal
                 )
             else:
