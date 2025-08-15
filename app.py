@@ -56,6 +56,10 @@ def main() -> None:
         group_cols=group_cols,
         cumulative=True,
     )
+    # Reapply any user-selected LDFs stored in session state before fitting models
+    for key, ldf_dict in st.session_state.get("custom_ldfs", {}).items():
+        utils.apply_selected_ldfs(key, pd.Series(ldf_dict))
+
     utils.fit_development_model(
         "chainladder", experiment_name="Basic Reserving Models"
     )
@@ -101,9 +105,27 @@ def main() -> None:
             with ata_tab:
                 custom_st_dataframe(tri_map.get("ata", pd.DataFrame()))
                 st.markdown("**LDFs**")
-                custom_st_dataframe(utils.ldf_exhibit[(group_title, val_col)])
+                ldf_key = (group_title, val_col)
+                ldf_df = utils.ldf_exhibit[ldf_key]
+                # Disable editing for non-selected rows and Avg Method column
+                disabled = pd.DataFrame(True, index=ldf_df.index, columns=ldf_df.columns)
+                disabled.loc[ldf_df["Avg Method"] == "Selected", :] = False
+                disabled["Avg Method"] = True
+                edited_ldf_df = st.data_editor(
+                    ldf_df,
+                    key=f"ldf_{group_title}_{val_col}",
+                    disabled=disabled,
+                )
+                utils.ldf_exhibit[ldf_key] = edited_ldf_df
+                selected_row = (
+                    edited_ldf_df[edited_ldf_df["Avg Method"] == "Selected"]
+                    .iloc[0]
+                    .drop("Avg Method")
+                )
+                st.session_state.setdefault("custom_ldfs", {})[ldf_key] = selected_row.to_dict()
+                utils.apply_selected_ldfs(ldf_key, selected_row)
                 st.markdown("**CDFs**")
-                custom_st_dataframe(utils.cdf_exhibit[(group_title, val_col)])
+                custom_st_dataframe(utils.cdf_exhibit[ldf_key])
             with reserve_tab:
                 st.markdown("**Reserve Exhibit**")
                 custom_st_dataframe(utils.reserve_exhibit[(group_title, val_col)])
