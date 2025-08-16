@@ -153,6 +153,80 @@ def custom_st_dataframe(df: pd.DataFrame) -> None:
     st.dataframe(df, hide_index=True, column_config=column_config)
 
 
+def custom_data_editor(
+    df: pd.DataFrame,
+    disabled: pd.Series | list | tuple | None = None,
+    column_config: dict | None = None,
+    **kwargs,
+) -> pd.DataFrame:
+    """Display ``df`` in ``st.data_editor`` with numeric formatting and row shading.
+
+    Parameters
+    ----------
+    df:
+        Data to display.
+    disabled:
+        Optional row-level disabled mask. Disabled rows are shaded gray to
+        indicate they are not editable.
+    column_config:
+        Optional Streamlit ``column_config`` mapping. Numeric columns that are
+        not explicitly configured receive default formatting.
+    **kwargs:
+        Additional keyword arguments forwarded to ``st.data_editor``.
+
+    Returns
+    -------
+    pd.DataFrame
+        The DataFrame returned by ``st.data_editor``.
+    """
+
+    index_levels = df.index.nlevels
+    df = df.copy()
+    df.columns = df.columns.map(str)
+
+    index_cols = list(df.columns[:index_levels])
+    numeric_cols: list[str] = []
+
+    for col in df.columns:
+        if col in index_cols:
+            continue
+        converted = pd.to_numeric(df[col], errors="coerce")
+        if converted.notna().any():
+            df[col] = converted
+            numeric_cols.append(col)
+
+    df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors="coerce")
+
+    user_cfg = column_config or {}
+    column_config = {}
+    for col in numeric_cols:
+        if col not in user_cfg:
+            max_val = df[col].abs().max()
+            fmt = "localized" if max_val > 999 else "%.2f"
+            column_config[col] = st.column_config.NumberColumn(format=fmt)
+    column_config.update(user_cfg)
+
+    disabled_rows = None
+    if isinstance(disabled, (pd.Series, list, tuple)):
+        disabled_rows = pd.Series(disabled, index=df.index)
+        styled_df = df.style.apply(
+            lambda row: ["background-color: #f0f0f0" if disabled_rows.loc[row.name] else ""]
+            * len(row),
+            axis=1,
+        )
+        return st.data_editor(
+            styled_df,
+            disabled=disabled_rows,
+            column_config=column_config,
+            hide_index=True,
+            **kwargs,
+        )
+
+    return st.data_editor(
+        df, disabled=disabled, column_config=column_config, hide_index=True, **kwargs
+    )
+
+
 class ReservingAppTriangle:
     """Utility helpers for actuarial reserving tasks.
 
@@ -448,6 +522,10 @@ class ReservingAppTriangle:
     ) -> None:
         """Update exhibits with user selected LDFs for ``key``.
 
+        If ``key`` is not present the call is ignored, allowing callers to
+        safely reapply previously stored selections even after the available
+        value or grouping options change.
+
         Parameters
         ----------
         key:
@@ -456,6 +534,12 @@ class ReservingAppTriangle:
             Series of LDF values indexed by development period labels, e.g.
             ``"12-24"``.
         """
+        if (
+            key not in self.ldf_exhibit
+            or key not in self.cdf_exhibit
+            or key not in self.triangles
+        ):
+            return
 
         # Normalize the Series to float values and construct pattern dict
         ldf_series = ldf_series.astype(float)
@@ -465,8 +549,7 @@ class ReservingAppTriangle:
         # Update LDF exhibit row
         ldf_df = self.ldf_exhibit[key].copy()
         mask = ldf_df["Avg Method"] == "Selected"
-        for col, val in ldf_series.items():
-            ldf_df.loc[mask, col] = val
+        ldf_df.loc[mask, ldf_series.index] = ldf_series.values
         self.ldf_exhibit[key] = ldf_df
 
         # Recompute corresponding CDF row via DevelopmentConstant
