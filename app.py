@@ -56,9 +56,14 @@ def main() -> None:
         group_cols=group_cols,
         cumulative=True,
     )
-    # Reapply any user-selected LDFs stored in session state before fitting models
-    for key, ldf_dict in st.session_state.get("custom_ldfs", {}).items():
-        utils.apply_selected_ldfs(key, pd.Series(ldf_dict))
+    # Reapply any user-selected LDFs stored in session state before fitting models.
+    # Keys from prior selections may no longer exist when the user changes
+    # value/grouping options, so ignore and remove stale entries.
+    for key, ldf_dict in list(st.session_state.get("custom_ldfs", {}).items()):
+        if key in utils.ldf_exhibit:
+            utils.apply_selected_ldfs(key, pd.Series(ldf_dict))
+        else:
+            del st.session_state["custom_ldfs"][key]
 
     utils.fit_development_model("chainladder", experiment_name="Basic Reserving Models")
     if prem_col:
@@ -107,16 +112,16 @@ def main() -> None:
                 ldf_df = utils.ldf_exhibit[ldf_key]
                 # Enable editing only for the "Selected" row and keep the
                 # ``Avg Method`` column read-only so users can overwrite the
-                # LDF values.
+                # LDF values. Visually shade non-editable rows gray so users
+                # know they are locked.
                 row_disabled = ldf_df["Avg Method"] != "Selected"
-                edited_ldf_df = st.data_editor(
+                edited_ldf_df = custom_data_editor(
                     ldf_df,
                     key=f"ldf_{group_title}_{val_col}",
                     disabled=row_disabled,
                     column_config={
                         "Avg Method": st.column_config.TextColumn(disabled=True)
                     },
-                    hide_index=True,
                 )
                 utils.ldf_exhibit[ldf_key] = edited_ldf_df
                 selected_row = (
