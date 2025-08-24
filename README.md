@@ -5,8 +5,8 @@ A monorepo application for reserving analytics using chainladder methods, built 
 ## 🏗️ Architecture
 
 - **Frontend**: Remix (TypeScript) with Ant Design components
-- **Backend**: FastAPI (Python 3.11) with chainladder analytics
-- **Package Managers**: npm (frontend), uv/pip (backend)
+- **Backend**: FastAPI (Python 3.12) with chainladder analytics
+- **Package Managers**: npm (frontend), pipenv (backend)
 - **Development**: Docker Compose or direct local development
 
 ## 🚀 Quick Start
@@ -14,7 +14,8 @@ A monorepo application for reserving analytics using chainladder methods, built 
 ### Prerequisites
 
 - Node.js 20+
-- Python 3.11+
+- Python 3.12+
+- pipenv
 - Docker & Docker Compose (optional)
 
 ### Option 1: Docker Compose (Recommended)
@@ -35,15 +36,14 @@ docker-compose up --build
 ```bash
 cd api
 
-# Install uv (recommended) or use pip
-pip install uv
-uv pip install -e .
+# Install pipenv if you don't have it
+pip install --user pipenv
 
-# Or with pip
-pip install -e .
+# Install dependencies and create virtual environment
+pipenv install
 
-# Start the development server
-uvicorn app.main:app --reload --port 8000
+# Activate virtual environment and start the development server
+pipenv run uvicorn app.main:app --reload --port 8000
 ```
 
 #### Frontend Setup
@@ -75,7 +75,7 @@ repo-root/
 │   │   ├── services/        # Business logic
 │   │   └── main.py          # Application entry point
 │   ├── tests/               # Test files
-│   ├── pyproject.toml
+│   ├── Pipfile              # pipenv dependencies
 │   └── Dockerfile
 ├── infra/                    # Infrastructure files
 │   └── docker-compose.yml
@@ -95,21 +95,29 @@ The backend provides a REST API with the following endpoints:
 #### API Usage
 
 ```bash
-# Test the API with a sample CSV
-curl -X POST "http://localhost:8000/reserving/analyze" \
-  -F "csv=@sample_triangle.csv" \
-  -F "origin_col=origin" \
-  -F "dev_col=dev" \
-  -F "value_col=value" \
-  -F "cumulative=true"
+# Test the API with a sample CSV (PowerShell)
+# Option 1: Install curl for Windows (easiest)
+# Download curl from: https://curl.se/windows/ or use winget: winget install cURL.cURL
+
+# Option 2: Use Python to test the API
+python -c "
+import requests
+files = {'csv': open('api/sample_triangle.csv', 'rb')}
+data = {'origin_col': 'origin', 'dev_col': 'dev', 'value_col': 'value', 'cumulative': 'true'}
+response = requests.post('http://localhost:8000/reserving/analyze', files=files, data=data)
+print(response.json())
+"
+
+# Option 3: Use curl if you have it installed
+# curl -X POST "http://localhost:8000/reserving/analyze" -F "csv=@api/sample_triangle.csv" -F "origin_col=origin" -F "dev_col=dev" -F "value_col=value" -F "cumulative=true"
 ```
 
 #### Running Tests
 
 ```bash
 cd api
-uv pip install -e ".[dev]"
-python -m pytest tests/ -v
+pipenv install --dev
+pipenv run pytest tests/ -v
 ```
 
 ### Frontend Development
@@ -153,7 +161,7 @@ origin,dev,value
 
 ```bash
 cd api
-python -m pytest tests/ -v --tb=short
+pipenv run pytest tests/ -v --tb=short
 ```
 
 ### Frontend Tests
@@ -169,8 +177,8 @@ npm test
 
 ```bash
 cd api
-docker build -t reserving-api .
-docker run -p 8000:8000 reserving-api
+pipenv install --deploy
+pipenv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 ### Frontend Deployment

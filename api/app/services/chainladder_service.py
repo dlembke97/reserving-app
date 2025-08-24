@@ -51,10 +51,13 @@ class ChainladderService:
             # Mack Chainladder
             try:
                 mack = cl.MackChainladder().fit(triangle)
-                result["mack_ultimate"] = float(mack.ultimate_.sum())
+                # Convert Triangle to DataFrame and get sum
+                ultimate_df = mack.ultimate_.to_frame()
+                result["mack_ultimate"] = float(ultimate_df.sum().sum())
                 # Try to get MSE if available
                 try:
-                    result["mack_mse"] = float(mack.mse_.sum())
+                    mse_df = mack.mse_.to_frame()
+                    result["mack_mse"] = float(mse_df.sum().sum())
                 except:
                     result["mack_mse"] = None
             except Exception as e:
@@ -64,7 +67,9 @@ class ChainladderService:
             # Cape Cod
             try:
                 cape_cod = cl.CapeCod().fit(triangle)
-                result["cape_cod_ultimate"] = float(cape_cod.ultimate_.sum())
+                # Convert Triangle to DataFrame and get sum
+                cape_cod_df = cape_cod.ultimate_.to_frame()
+                result["cape_cod_ultimate"] = float(cape_cod_df.sum().sum())
             except Exception as e:
                 # Cape Cod failed, keep defaults
                 pass
@@ -72,26 +77,25 @@ class ChainladderService:
             # Age-to-age LDFs
             try:
                 dev = cl.Development().fit(triangle)
-                ldf_values = dev.ldf_.values
+                # Convert Triangle to DataFrame for easier manipulation
+                ldf_df = dev.ldf_.to_frame()
 
                 # Convert LDFs to list format with origin and development periods
                 ldfs = []
                 for i, origin in enumerate(triangle.origin):
-                    for j, dev in enumerate(
+                    for j, dev_period in enumerate(
                         triangle.development[:-1]
                     ):  # Exclude last dev period
-                        if i < len(ldf_values) and j < len(ldf_values[i]):
-                            ldfs.append(
-                                {
-                                    "origin": str(origin),
-                                    "development": str(dev),
-                                    "ldf": (
-                                        float(ldf_values[i][j])
-                                        if not np.isnan(ldf_values[i][j])
-                                        else None
-                                    ),
-                                }
-                            )
+                        if i < ldf_df.shape[0] and j < ldf_df.shape[1]:
+                            ldf_value = ldf_df.iloc[i, j]
+                            if pd.notna(ldf_value):
+                                ldfs.append(
+                                    {
+                                        "origin": str(origin),
+                                        "development": str(dev_period),
+                                        "ldf": float(ldf_value),
+                                    }
+                                )
 
                 result["ldfs"] = ldfs
             except Exception as e:

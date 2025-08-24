@@ -1,27 +1,29 @@
-version: '3.8'
-
 services:
   api:
     build:
-      context: ../api
+      context: ./api
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
     environment:
       - PYTHONPATH=/app
     volumes:
-      - ../api:/app
+      - ./api:/app
     networks:
       - reserving-network
 
   frontend:
     build:
-      context: ../frontend
+      context: ./frontend
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
     environment:
-      - API_BASE_URL=http://localhost:8000
+      - API_BASE_URL=http://api:8000
+      - NODE_ENV=development
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
     depends_on:
       - api
     networks:

@@ -4,7 +4,7 @@ import {
     BarChartOutlined,
     FileTextOutlined,
     CalculatorOutlined,
-    TrendingUpOutlined
+    RiseOutlined
 } from "@ant-design/icons";
 
 const { Title, Paragraph } = Typography;
@@ -34,7 +34,7 @@ export default function Dashboard() {
                         <Statistic
                             title="Mack Ultimate"
                             value={0}
-                            prefix={<TrendingUpOutlined />}
+                            prefix={<RiseOutlined />}
                             valueStyle={{ color: "#1890ff" }}
                         />
                     </Card>
