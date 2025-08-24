@@ -17,7 +17,7 @@ import {
     Spin
 } from "antd";
 import { UploadOutlined, SendOutlined } from "@ant-design/icons";
-import { apiClient, type TriangleAnalysisResponse } from "~/utils/api.client";
+import { apiClient, type TriangleAnalysisResponse } from "~/utils/api.server";
 
 const { Title, Text } = Typography;
 
