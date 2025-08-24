@@ -1,7 +1,7 @@
 import React, { useState } from "react";
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { json, redirect } from "@remix-run/node";
-import { useActionData, useLoaderData, useNavigation } from "@remix-run/react";
+import type { ActionFunctionArgs } from "@remix-run/node";
+import { json } from "@remix-run/node";
+import { useActionData, useNavigation, useSubmit } from "@remix-run/react";
 import {
     Form,
     Upload,
@@ -68,6 +68,7 @@ export async function action({ request }: ActionFunctionArgs) {
 export default function UploadTriangle() {
     const actionData = useActionData<ActionData>();
     const navigation = useNavigation();
+    const submit = useSubmit();
     const [fileList, setFileList] = useState<any[]>([]);
     const [form] = Form.useForm();
 
@@ -86,8 +87,7 @@ export default function UploadTriangle() {
         formData.append("value_col", values.value_col || "value");
         formData.append("cumulative", values.cumulative !== false ? "true" : "false");
 
-        // Submit the form
-        form.submit();
+        submit(formData, { method: "post", encType: "multipart/form-data" });
     };
 
     const uploadProps = {
